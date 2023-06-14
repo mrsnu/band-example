@@ -1,0 +1,23 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "{7F522310-4EC8-502E-D30F-339D58963297}",
+	"Category": "",
+	"Description": "",
+	"Modules": [
+		{
+			"Name": "BandExample",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "GoogleVRHMD",
+			"Enabled": true
+		},
+		{
+			"Name": "AndroidCamera",
+			"Enabled": true
+		}
+	]
+}

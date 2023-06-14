@@ -1,0 +1,37 @@
+﻿<wpf:ResourceDictionary xml:space="preserve" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:s="clr-namespace:System;assembly=mscorlib" xmlns:ss="urn:shemas-jetbrains-com:settings-storage-xaml" xmlns:wpf="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
+	<s:String x:Key="/Default/CodeInspection/PencilsConfiguration/ActualSeverity/@EntryValue">WARNING</s:String>
+	<s:String x:Key="/Default/Environment/UnitTesting/UnitTestSessionStore/Sessions/=1207d37d_002D90c9_002D4dc9_002D894c_002D76f6b02b2372/@EntryIndexedValue">&lt;SessionState ContinuousTestingMode="0" Name="Session" xmlns="urn:schemas-jetbrains-com:jetbrains-ut-session"&gt;&#xD;
+  &lt;Or&gt;&#xD;
+    &lt;And&gt;&#xD;
+      &lt;Namespace&gt;Private.Test.VariantTest&lt;/Namespace&gt;&#xD;
+      &lt;Project Location="C:\gh\unreal\ue4-example\Plugins\Maestro\Source\Maestro" Presentation="&amp;lt;BandExample&amp;gt;\&amp;lt;Plugins&amp;gt;\&amp;lt;Maestro&amp;gt;\&amp;lt;Source&amp;gt;\&amp;lt;Maestro&amp;gt;" /&gt;&#xD;
+    &lt;/And&gt;&#xD;
+    &lt;And&gt;&#xD;
+      &lt;Namespace&gt;Private.Test.MatchingTest&lt;/Namespace&gt;&#xD;
+      &lt;Project Location="C:\gh\unreal\ue4-example\Plugins\Maestro\Source\Maestro" Presentation="&amp;lt;BandExample&amp;gt;\&amp;lt;Plugins&amp;gt;\&amp;lt;Maestro&amp;gt;\&amp;lt;Source&amp;gt;\&amp;lt;Maestro&amp;gt;" /&gt;&#xD;
+    &lt;/And&gt;&#xD;
+  &lt;/Or&gt;&#xD;
+&lt;/SessionState&gt;</s:String>
+	<s:String x:Key="/Default/Environment/UnitTesting/UnitTestSessionStore/Sessions/=38d77665_002D79c8_002D4051_002D9faf_002D4f573c8fba57/@EntryIndexedValue">&lt;SessionState ContinuousTestingMode="0" IsActive="True" Name="All tests from &amp;lt;BandExample&amp;gt;\&amp;lt;Plugins&amp;gt;\&amp;lt;Maestro&amp;gt;\&amp;lt;Source&amp;gt;\&amp;lt;Maestro&amp;gt;" xmlns="urn:schemas-jetbrains-com:jetbrains-ut-session"&gt;&#xD;
+  &lt;Project Location="C:\gh\unreal\ue4-example\Plugins\Maestro\Source\Maestro" Presentation="&amp;lt;BandExample&amp;gt;\&amp;lt;Plugins&amp;gt;\&amp;lt;Maestro&amp;gt;\&amp;lt;Source&amp;gt;\&amp;lt;Maestro&amp;gt;" /&gt;&#xD;
+&lt;/SessionState&gt;</s:String>
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	</wpf:ResourceDictionary>

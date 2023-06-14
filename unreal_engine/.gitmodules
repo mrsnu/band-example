@@ -1,0 +1,12 @@
+[submodule "Plugins/Plugins/Maestro"]
+	path = Plugins/Plugins/Maestro
+	url = https://github.com/mrsnu/maestro-ue.git
+[submodule "Plugins/Maestro"]
+	path = Plugins/Maestro
+	url = https://github.com/mrsnu/maestro-ue.git
+[submodule "Plugins/AndroidCamera"]
+	path = Plugins/AndroidCamera
+	url = https://github.com/snuhcs/android-camera-ue.git
+[submodule "Plugins/Band"]
+	path = Plugins/Band
+	url = https://github.com/mrsnu/band-ue.git
