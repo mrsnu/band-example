@@ -1,0 +1,6 @@
+[submodule "unreal_engine/Plugins/AndroidCamera"]
+	path = unreal_engine/Plugins/AndroidCamera
+	url = https://github.com/snuhcs/android-camera-ue.git
+[submodule "unreal_engine/Plugins/Band"]
+	path = unreal_engine/Plugins/Band
+	url = https://github.com/mrsnu/band-ue.git
