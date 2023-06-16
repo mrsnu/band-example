@@ -1,6 +1,6 @@
 {
 	"FileVersion": 3,
-	"EngineAssociation": "{7F522310-4EC8-502E-D30F-339D58963297}",
+	"EngineAssociation": "4.27",
 	"Category": "",
 	"Description": "",
 	"Modules": [
@@ -16,62 +16,8 @@
 			"Enabled": true
 		},
 		{
-			"Name": "SteamVR",
-			"Enabled": false,
-			"SupportedTargetPlatforms": [
-				"Win32",
-				"Win64",
-				"Linux"
-			]
-		},
-		{
-			"Name": "MagicLeapMedia",
-			"Enabled": false,
-			"SupportedTargetPlatforms": [
-				"Lumin"
-			]
-		},
-		{
-			"Name": "OculusVR",
-			"Enabled": false,
-			"SupportedTargetPlatforms": [
-				"Win32",
-				"Win64",
-				"Android"
-			]
-		},
-		{
-			"Name": "OpenXREyeTracker",
-			"Enabled": false,
-			"SupportedTargetPlatforms": [
-				"Win32",
-				"Win64",
-				"Linux",
-				"HoloLens",
-				"Android"
-			]
-		},
-		{
-			"Name": "OpenXRHandTracking",
-			"Enabled": false,
-			"SupportedTargetPlatforms": [
-				"Win32",
-				"Win64",
-				"Linux",
-				"HoloLens",
-				"Android"
-			]
-		},
-		{
-			"Name": "OpenXR",
-			"Enabled": false,
-			"SupportedTargetPlatforms": [
-				"Win32",
-				"Win64",
-				"Linux",
-				"Android",
-				"HoloLens"
-			]
+			"Name": "Band",
+			"Enabled": true
 		}
 	]
 }
