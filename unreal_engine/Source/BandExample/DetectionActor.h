@@ -34,6 +34,7 @@ public:
 	virtual void Tick(float DeltaTime) override;
 
 	void OnFrameAvailable(const UAndroidCameraFrame* Frame);
+        UFUNCTION()
 	void OnTextureAvailable(UTexture2D* Texture);
 	void OnEndRequest(int32 JobId, EBandStatus Status);
 
