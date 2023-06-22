@@ -50,9 +50,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Band")
 	UBandLabel* Label = nullptr;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	TArray<UBandTensor*> DetectorInputTensors;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	TArray<UBandTensor*> DetectorOutputTensors;
+
 private:
 	UImage* CameraImage = nullptr;
-
-	TArray<UBandTensor*> DetectorInputTensors;
-	TArray<UBandTensor*> DetectorOutputTensors;
 };
