@@ -1,4 +1,8 @@
-## Directory Structure
+<!-- ABOUT THE PROJECT -->
+## Examples Built with Band
+This repository contains examples of how to use Band in different languages and frameworks.
+
+### Directory Structure
 
 ```
 .
