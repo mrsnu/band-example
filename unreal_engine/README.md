@@ -22,12 +22,11 @@
 </details>
 
 
-
-
 ### Dependency
 
 * [Band](https://github.com/mrsnu/tflite)
-* [Band UE4 Plugin](https://github.com/mrsnu/ue4-plugin)
+* [Band UE4 Plugin](https://github.com/mrsnu/band-ue)
+* [Android Camera Plugin](https://github.com/snuhcs/android-camera-ue)
 * [Unreal Engine 4](https://www.unrealengine.com/en-US/)
 
 <!-- GETTING STARTED -->
@@ -43,8 +42,8 @@
 
 1. Clone the repo
    ```sh
-   git clone https://github.com/mrsnu/ue4-example.git
-   cd ue4-example
+   git clone https://github.com/mrsnu/band-example.git
+   cd band-example
    ```
 2. Update submodules
    ```sh
@@ -52,14 +51,15 @@
    ```
 3. Re-generate visual studio project of root .uproject
 
-#### How to visualize timeline trace
-1. Launch android applciation in editor
-2. Run preparation script
-   ``` sh
-   cd Scripts
-   ./PrepareInsights.bat
-   ```
-3. Run [Unreal Insights](https://docs.unrealengine.com/4.27/en-US/TestingAndOptimization/PerformanceAndProfiling/UnrealInsights/) to attach live session with band traces
+#### How to start
+1. Launch BandExample.uproject in Unreal Engine
+2. Open one of the example maps in Content/Maps:
+
+- **Band_Classification_BP**: Example of using Band plugin with Blueprint-based mobile augmented reality classificaiton application
+- **Band_Detection_BP**: Example of using Band plugin with Blueprint-based mobile augmented reality object detection application
+- **Band_Detection_C++**: Example of using Band plugin with C++-based mobile augmented reality object detection application
+
+3. Build and run the application on Android device
 
 <!-- CONTACT -->
 ### Contact
