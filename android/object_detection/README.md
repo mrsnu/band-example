@@ -10,9 +10,9 @@ This example implements an Activity that performs real-time processing on the li
 ## How to use this example as a template
 1. Clone this folder and change the application ID in `build.gradle` to your own application ID
 (You can find the application ID in the `build.gradle` file of your app module. For example, `com.example.myapp`). 
-2. Update the package name in `AndroidManifest.xml` to your own package name
-3. Change the package name in `src/main/*` to your own package name and update the directory structure accordingly (e.g., `src/main/java/com/example/myapp`)
-4. Change the application name in `app/strings.xml` to your own application name
+2. Update the package name in `app/src/main/AndroidManifest.xml` to your own package name
+3. Change the package name in `app/src/main/*` to your own package name and update the directory structure accordingly (e.g., `src/main/java/com/example/myapp`)
+4. Change the application name in `app/src/main/res/values/strings.xml` to your own application name
 5. Start developing your own application!
 
 ## Reference
