@@ -150,8 +150,33 @@ class CameraActivity : AppCompatActivity() {
         List<Tensor>(engine.getNumOutputTensors(model)) { engine.createOutputTensor(model, it) }    // 4 is the number of output tensors
     }
 
+    private val detInputTensors by lazy {
+        List<Tensor>(engine.getNumInputTensors(detModel)) { engine.createInputTensor(detModel, it) }
+    }
+
+    private val detOutputTensors by lazy {
+        List<Tensor>(engine.getNumOutputTensors(detModel)) { engine.createOutputTensor(detModel, it) }
+    }
+
+    private val recInputTensors by lazy {
+        List<List<Tensor>>(MAX_NUM_FACES) {
+            List<Tensor>(engine.getNumInputTensors(recModel)) { engine.createInputTensor(recModel, it) }
+        }
+    }
+
+    private val recOutputTensors by lazy {
+        List<List<Tensor>>(MAX_NUM_FACES) {
+            List<Tensor>(engine.getNumOutputTensors(recModel)) { engine.createOutputTensor(recModel, it) }
+        }
+    }
+
+
     private val inputSize by lazy {
         Size(inputTensors[0].dims[2], inputTensors[0].dims[1]) // Order of axis is: {1, height, width, 3}
+    }
+
+    private val detInputSize by lazy {
+        Size(detInputTensors[0].dims[2], detInputTensors[0].dims[1]) // Order of axis is: {1, height, width, 3}
     }
 
     private val labels by lazy {
@@ -170,7 +195,6 @@ class CameraActivity : AppCompatActivity() {
         FaceRecognitionHelper(engine, recModel, labels)
     }
 
-
     private val imageProcessor by lazy {
         val cropSize = minOf(bitmapBuffer.width, bitmapBuffer.height)
         val cropStart = Size((bitmapBuffer.width - cropSize) / 2, (bitmapBuffer.height - cropSize) / 2)
@@ -180,6 +204,16 @@ class CameraActivity : AppCompatActivity() {
         builder.addCrop(cropStart.width, cropStart.height, cropStart.width + cropSize - 1, cropStart.height + cropSize - 1)
         builder.addResize(inputSize.width, inputSize.height)
         builder.addRotate(-imageRotationDegrees)
+        builder.build()
+    }
+
+    private val detImageProcessor by lazy {
+        val builder = ImageProcessorBuilder()
+        builder.addColorSpaceConvert(BufferFormat.RGB)
+        // center crop
+        builder.addResize(detInputSize.width, detInputSize.height)
+        builder.addRotate(-imageRotationDegrees)
+        builder.addDataTypeConvert()
         builder.build()
     }
 
@@ -274,15 +308,16 @@ class CameraActivity : AppCompatActivity() {
                 inputBuffer = Buffer(realImage.planes, image.width, image.height, BufferFormat.YV12)
 
                 // Process the image in Tensorflow
-                imageProcessor.process(inputBuffer, inputTensors[0])
+                detImageProcessor.process(inputBuffer, detInputTensors[0])
                 image.close()
                 // Perform the object detection for the current frame
-                val predictions = detector.predict(inputTensors, outputTensors)
+                val predictions = faceDet.predict(detInputTensors, detOutputTensors)
 
                 Log.d(TAG, "predictions: $predictions")
+                Log.d("XXX", "num of faces: ${predictions.size}")
 
                 // Report only the top prediction
-                reportPrediction(predictions.maxByOrNull { it.score })
+                reportPrediction(predictions.maxByOrNull { it.confidence })
 
                 // Compute the FPS of the entire pipeline
                 val frameCount = 10
@@ -311,11 +346,11 @@ class CameraActivity : AppCompatActivity() {
     }
 
     private fun reportPrediction(
-        prediction: ObjectDetectionHelper.ObjectPrediction?
+        prediction: FaceDetectionHelper.BoundingBox?
     ) = activityCameraBinding.viewFinder.post {
 
         // Early exit: if prediction is not good enough, don't report it
-        if (prediction == null || prediction.score < ACCURACY_THRESHOLD) {
+        if (prediction == null) {
             activityCameraBinding.boxPrediction.visibility = View.GONE
             activityCameraBinding.textPrediction.visibility = View.GONE
             return@post
@@ -325,13 +360,14 @@ class CameraActivity : AppCompatActivity() {
         val location = mapOutputCoordinates(prediction.location)
 
         // Update the text and UI
-        activityCameraBinding.textPrediction.text = "${"%.2f".format(prediction.score)} ${prediction.label}"
+        activityCameraBinding.textPrediction.text = "%.2f".format(prediction.confidence)
         (activityCameraBinding.boxPrediction.layoutParams as ViewGroup.MarginLayoutParams).apply {
             topMargin = location.top.toInt()
             leftMargin = location.left.toInt()
             width = min(activityCameraBinding.viewFinder.width, location.right.toInt() - location.left.toInt())
             height = min(activityCameraBinding.viewFinder.height, location.bottom.toInt() - location.top.toInt())
         }
+
 
         // Make sure all UI elements are visible
         activityCameraBinding.boxPrediction.visibility = View.VISIBLE
@@ -419,12 +455,12 @@ class CameraActivity : AppCompatActivity() {
     companion object {
         private val TAG = CameraActivity::class.java.simpleName
 
-        private const val ACCURACY_THRESHOLD = 0.5f
         private const val MODEL_PATH = "coco_ssd_mobilenet_v1_1.0_quant.tflite"
         private const val LABELS_PATH = "coco_ssd_mobilenet_v1_1.0_labels.txt"
 
         private const val DET_MODEL_PATH = "retinaface-mbv2-int8.tflite"
         private const val REC_MODEL_PATH = "arc-mbv2-int8.tflite"
 
+        private const val MAX_NUM_FACES = 10
     }
 }

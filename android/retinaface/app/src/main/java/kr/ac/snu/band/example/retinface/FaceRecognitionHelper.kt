@@ -75,5 +75,6 @@ class FaceRecognitionHelper(private val engine: Engine, private val model: Model
 
     companion object {
         const val OBJECT_COUNT = 10
+        const val MAX_NUM_FACES = 5
     }
 }
