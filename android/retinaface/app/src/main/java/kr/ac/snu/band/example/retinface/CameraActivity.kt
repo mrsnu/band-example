@@ -118,6 +118,30 @@ class CameraActivity : AppCompatActivity() {
         model
     }
 
+    private val detModel by lazy {
+        // Load mapped byte buffer from asset
+        val fileDescriptor = assets.openFd(DET_MODEL_PATH)
+        val inputStream = fileDescriptor.createInputStream()
+        val mappedBuffer = inputStream.channel.map(
+            FileChannel.MapMode.READ_ONLY, fileDescriptor.startOffset, fileDescriptor.declaredLength)
+        inputStream.close()
+        val model = Model(BackendType.TFLITE, mappedBuffer)
+        engine.registerModel(model)
+        model
+    }
+
+    private val recModel by lazy {
+        // Load mapped byte buffer from asset
+        val fileDescriptor = assets.openFd(REC_MODEL_PATH)
+        val inputStream = fileDescriptor.createInputStream()
+        val mappedBuffer = inputStream.channel.map(
+            FileChannel.MapMode.READ_ONLY, fileDescriptor.startOffset, fileDescriptor.declaredLength)
+        inputStream.close()
+        val model = Model(BackendType.TFLITE, mappedBuffer)
+        engine.registerModel(model)
+        model
+    }
+
     private val inputTensors by lazy {
         List<Tensor>(engine.getNumInputTensors(model)) { engine.createInputTensor(model, it) }    // 1 is the number of input tensors
     }
@@ -137,6 +161,15 @@ class CameraActivity : AppCompatActivity() {
     private val detector by lazy {
         ObjectDetectionHelper(engine, model, labels)
     }
+
+    private val faceDet by lazy {
+        FaceDetectionHelper(engine, model, labels)
+    }
+
+    private val faceRec by lazy {
+        FaceRecognitionHelper(engine, model, labels)
+    }
+
 
     private val imageProcessor by lazy {
         val cropSize = minOf(bitmapBuffer.width, bitmapBuffer.height)
@@ -389,5 +422,9 @@ class CameraActivity : AppCompatActivity() {
         private const val ACCURACY_THRESHOLD = 0.5f
         private const val MODEL_PATH = "coco_ssd_mobilenet_v1_1.0_quant.tflite"
         private const val LABELS_PATH = "coco_ssd_mobilenet_v1_1.0_labels.txt"
+
+        private const val DET_MODEL_PATH = "retinaface-mbv2-int8.tflite"
+        private const val REC_MODEL_PATH = "arc-mbv2-int8.tflite"
+
     }
 }
