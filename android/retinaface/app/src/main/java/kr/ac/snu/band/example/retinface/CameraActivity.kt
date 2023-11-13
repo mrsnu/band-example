@@ -163,11 +163,11 @@ class CameraActivity : AppCompatActivity() {
     }
 
     private val faceDet by lazy {
-        FaceDetectionHelper(engine, model, labels)
+        FaceDetectionHelper(engine, detModel, labels)
     }
 
     private val faceRec by lazy {
-        FaceRecognitionHelper(engine, model, labels)
+        FaceRecognitionHelper(engine, recModel, labels)
     }
 
 
