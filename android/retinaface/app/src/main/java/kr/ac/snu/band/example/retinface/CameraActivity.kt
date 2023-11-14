@@ -21,7 +21,9 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.graphics.Matrix
+import android.graphics.Rect
 import android.graphics.RectF
 import android.os.Bundle
 import android.util.Log
@@ -38,7 +40,6 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import kr.ac.snu.band.example.retinface.databinding.ActivityCameraBinding
-
 import org.mrsnu.band.BackendType
 import org.mrsnu.band.Band
 import org.mrsnu.band.Buffer
@@ -52,10 +53,12 @@ import org.mrsnu.band.Model
 import org.mrsnu.band.SchedulerType
 import org.mrsnu.band.SubgraphPreparationType
 import org.mrsnu.band.Tensor
-
+import java.io.File
+import java.io.FileOutputStream
 import java.nio.channels.FileChannel
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.random.Random
 
@@ -77,6 +80,8 @@ class CameraActivity : AppCompatActivity() {
 
     private var pauseAnalysis = false
     private var imageRotationDegrees: Int = 0
+
+    var identity_vec : FloatArray? = null
 
     private val engine by lazy {
         Band.init()
@@ -159,13 +164,13 @@ class CameraActivity : AppCompatActivity() {
     }
 
     private val recInputTensors by lazy {
-        List<List<Tensor>>(MAX_NUM_FACES) {
+        List(MAX_NUM_FACES) {
             List<Tensor>(engine.getNumInputTensors(recModel)) { engine.createInputTensor(recModel, it) }
         }
     }
 
     private val recOutputTensors by lazy {
-        List<List<Tensor>>(MAX_NUM_FACES) {
+        List(MAX_NUM_FACES) {
             List<Tensor>(engine.getNumOutputTensors(recModel)) { engine.createOutputTensor(recModel, it) }
         }
     }
@@ -179,6 +184,10 @@ class CameraActivity : AppCompatActivity() {
         Size(detInputTensors[0].dims[2], detInputTensors[0].dims[1]) // Order of axis is: {1, height, width, 3}
     }
 
+    private val recInputSize by lazy {
+        Size(recInputTensors[0][0].dims[2], recInputTensors[0][0].dims[1]) // Order of axis is: {1, height, width, 3}
+    }
+
     private val labels by lazy {
         assets.open(LABELS_PATH).bufferedReader().useLines { it.toList() }
     }
@@ -188,11 +197,11 @@ class CameraActivity : AppCompatActivity() {
     }
 
     private val faceDet by lazy {
-        FaceDetectionHelper(engine, detModel, labels)
+        FaceDetectionHelper(engine, detModel)
     }
 
     private val faceRec by lazy {
-        FaceRecognitionHelper(engine, recModel, labels)
+        FaceRecognitionHelper(engine)
     }
 
     private val imageProcessor by lazy {
@@ -314,10 +323,94 @@ class CameraActivity : AppCompatActivity() {
                 val predictions = faceDet.predict(detInputTensors, detOutputTensors)
 
                 Log.d(TAG, "predictions: $predictions")
-                Log.d("XXX", "num of faces: ${predictions.size}")
 
                 // Report only the top prediction
-                reportPrediction(predictions.maxByOrNull { it.confidence })
+                val bestPrediction = predictions.maxByOrNull { it.confidence }
+                reportPrediction(bestPrediction)
+
+                val recModels = ArrayList<Model>()
+
+                if (bestPrediction != null) {
+
+                    val bboxRect = RectF(
+                        bestPrediction.location.left * image.width,
+                        bestPrediction.location.top * image.height,
+                        bestPrediction.location.right * image.width,
+                        bestPrediction.location.bottom * image.height
+                    )
+
+                    bboxRect.left = max(bboxRect.left, 0f)
+                    bboxRect.top = max(bboxRect.top, 0f)
+                    bboxRect.right = min(bboxRect.right, image.width.toFloat())
+                    bboxRect.bottom = min(bboxRect.bottom, image.height.toFloat())
+
+                    val builder = ImageProcessorBuilder()
+                    builder.addColorSpaceConvert(BufferFormat.RGB)
+                    builder.addCrop(bboxRect.left.toInt(), bboxRect.top.toInt(), bboxRect.right.toInt(), bboxRect.bottom.toInt())
+                    builder.addResize(recInputSize.width, recInputSize.height)
+                    builder.addNormalize(127.5f, 127.5f)
+                    val recImageProcessor = builder.build()
+
+                    // TODO: support multiple faces.
+
+                    val i = 0
+
+                    recImageProcessor.process(inputBuffer, recInputTensors[i][0])
+                    recImageProcessor.close()
+                    recModels.add(recModel)
+
+
+                    // create int array of height * width * 3
+                    val colorArr = IntArray(recInputSize.width * recInputSize.height * 3)
+                    for (y in 0 until recInputSize.height) {
+                        for (x in 0 until recInputSize.width) {
+                            val index = y * recInputSize.width + x
+                            val r = recInputTensors[i][0].data[index * 3 * Float.SIZE_BYTES+ 0 * Float.SIZE_BYTES].toInt()
+                            val g = recInputTensors[i][0].data[index * 3 * Float.SIZE_BYTES+ 1 * Float.SIZE_BYTES].toInt()
+                            val b = recInputTensors[i][0].data[index * 3 * Float.SIZE_BYTES+ 2 * Float.SIZE_BYTES].toInt()
+                            colorArr[index] = Color.argb(255, r, g, b)
+                        }
+                    }
+                    val bitmap = Bitmap.createBitmap(colorArr, recInputSize.width, recInputSize.height, Bitmap.Config.ARGB_8888)
+
+                    // current time in milliseconds
+                    val time = System.currentTimeMillis()
+
+                    // time to string
+                    val timeStr = time.toString()
+
+                    // save bitmap to file
+                    val file = File("/data/local/tmp/face_${timeStr}.jpg")
+                    val out = FileOutputStream(file)
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
+                    out.close()
+
+
+
+                    val identities = faceRec.predict(recModels, recInputTensors, recOutputTensors)
+
+                    if (identity_vec == null) {
+                        identity_vec = identities[0]
+                    } else {
+                        var similarity: Float = (faceRec.dotProduct(identities[0], identity_vec!!) / (faceRec.norm(identities[0]) * faceRec.norm(identity_vec!!)) + 1f) / 2f
+                        similarity = min(max(similarity, 0f), 1f)
+
+                        Log.d("XXX", "similarity: $similarity")
+
+                        /*
+                        if (similarity > SIM_THRESHOLD) {
+                            Log.d("XXX", "same!")
+                        } else {
+                            Log.d("XXX", "different!")
+                        }
+                         */
+                    }
+
+
+
+                }
+
+
 
                 // Compute the FPS of the entire pipeline
                 val frameCount = 10
@@ -460,6 +553,7 @@ class CameraActivity : AppCompatActivity() {
 
         private const val DET_MODEL_PATH = "retinaface-mbv2-int8.tflite"
         private const val REC_MODEL_PATH = "arc-mbv2-int8.tflite"
+        private const val SIM_THRESHOLD = 0.8f
 
         private const val MAX_NUM_FACES = 10
     }

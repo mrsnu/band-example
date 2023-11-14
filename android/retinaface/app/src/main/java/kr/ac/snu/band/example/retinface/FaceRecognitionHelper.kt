@@ -16,65 +16,56 @@
 
 package kr.ac.snu.band.example.retinface
 
-import android.graphics.RectF
-
+import android.util.Log
 import org.mrsnu.band.Engine
 import org.mrsnu.band.Model
 import org.mrsnu.band.Tensor
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.sqrt
 
 /**
  * Helper class used to communicate between our app and the Band detection model
  */
-class FaceRecognitionHelper(private val engine: Engine, private val model: Model, private val labels: List<String>) {
+class FaceRecognitionHelper(private val engine: Engine) {
 
-    /** Abstraction object that wraps a prediction output in an easy to parse way */
-    data class ObjectPrediction(val location: RectF, val label: String, val score: Float)
+    fun predict(models : List<Model>, inputTensor : List<List<Tensor>>, outputTensor: List<List<Tensor>>): List<FloatArray> {
+        // TODO : support multiple faces
+        val i = 0
 
-    fun predict(inputTensor : List<Tensor>, outputTensor: List<Tensor>): List<ObjectPrediction> {
-        engine.requestSync(model, inputTensor, outputTensor)
+        //engine.requestSync(model, inputTensor, outputTensor)
+        //val requests = engine.requestAsyncBatch(models, inputTensor)
+        //engine.wait(requests[i], outputTensor[i])
 
-        val outputBuffer = mutableMapOf<Int, FloatArray>(
-            0 to FloatArray(4 * OBJECT_COUNT),
-            1 to FloatArray(OBJECT_COUNT),
-            2 to FloatArray(OBJECT_COUNT),
-            3 to FloatArray(1)
-        )
 
-        outputTensor.forEachIndexed { index, tensor ->
-            // byteBuffer to floatArray
-            val byteBuffer = tensor.data.order(ByteOrder.nativeOrder()).rewind()
-            (byteBuffer as ByteBuffer).asFloatBuffer().get(outputBuffer[index])
+        engine.requestSync(models[i], inputTensor[i], outputTensor[i])
+        val outBuffer = outputTensor[i][0].data.order(ByteOrder.nativeOrder())
+        val identity = FloatArray(OUTPUT_SHAPE[1])
+        (outBuffer as ByteBuffer).asFloatBuffer()[identity]
+
+        // log hash val of identity
+
+        return listOf(identity)
+    }
+
+    fun dotProduct(a : FloatArray, b : FloatArray) : Float {
+        assert (a.size == b.size)
+        var sum = 0f
+        for (i in a.indices) {
+            sum += a[i] * b[i]
         }
+        return sum
+    }
 
-        return (0 until OBJECT_COUNT).map {
-            val locationBuffer = outputBuffer[0]
-            val labelBuffer = outputBuffer[1]
-            val scoreBuffer = outputBuffer[2]
-
-            ObjectPrediction(
-                // The locations are an array of [0, 1] floats for [top, left, bottom, right]
-                location = RectF(
-                    locationBuffer?.get(4 * it + 1) ?: 0f,
-                    locationBuffer?.get(4 * it) ?: 0f,
-                    locationBuffer?.get(4 * it + 3) ?: 0f,
-                    locationBuffer?.get(4 * it + 2) ?: 0f
-                ),
-
-                // SSD Mobilenet V1 Model assumes class 0 is background class
-                // in label file and class labels start from 1 to number_of_classes + 1,
-                // while outputClasses correspond to class index from 0 to number_of_classes
-                label = labels[1 + (labelBuffer?.get(it)?.toInt() ?: 0)],
-
-                // Score is a single value of [0, 1]
-                score = scoreBuffer?.get(it) ?: 0f
-            )
+    fun norm(a : FloatArray) : Float {
+        var sum = 0f
+        for (i in a.indices) {
+            sum += a[i] * a[i]
         }
+        return sqrt(sum.toDouble()).toFloat()
     }
 
     companion object {
-        const val OBJECT_COUNT = 10
-        const val MAX_NUM_FACES = 5
+        val OUTPUT_SHAPE : List<Int> = listOf(1, 512)
     }
 }

@@ -17,91 +17,19 @@
 package kr.ac.snu.band.example.retinface
 
 import android.graphics.RectF
-import android.util.Log
 
 import org.mrsnu.band.Engine
 import org.mrsnu.band.Model
 import org.mrsnu.band.Tensor
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.nio.FloatBuffer
 import kotlin.math.max
 import kotlin.math.min
 
 /**
  * Helper class used to communicate between our app and the Band detection model
  */
-class FaceDetectionHelper(private val engine: Engine, private val model: Model, private val labels: List<String>) {
-
-
-
-    /** Abstraction object that wraps a prediction output in an easy to parse way */
-    class BoundingBox(val location: RectF, val confidence: Float) {
-        fun iou (other: BoundingBox) : Float {
-            return intersection(other) / union(other)
-        }
-
-        private fun intersection (other: BoundingBox) : Float {
-            if (location.left < other.location.left || location.right > other.location.right ||
-                location.top < other.location.top || location.bottom > other.location.bottom) {
-                return 0f
-            }
-            return (min(location.right, other.location.right) - max(location.left, other.location.left)) *
-                    (min(location.bottom, other.location.bottom) - max(location.top, other.location.top))
-        }
-
-        private fun union (other: BoundingBox) : Float {
-            val intersection: Float = intersection(other)
-            val area1 = (location.right - location.left) * (location.bottom - location.top)
-            val area2 =
-                (other.location.right - other.location.left) * (other.location.bottom - other.location.top)
-            return area1 + area2 - intersection
-        }
-
-    }
-
-    data class ObjectPrediction(val location: RectF, val label: String, val score: Float)
-
-    private fun decodeBoxes(results: FloatBuffer) : List<BoundingBox> {
-        val boxes = ArrayList<BoundingBox>()
-        for (i in 0 until OUTPUT_SHAPE[0]) {
-            val offset = i * OUTPUT_SHAPE[1]
-            val confidence = results[offset + OUTPUT_SHAPE[1] - 1]
-            if (confidence > SCORE_THRESHOLD) {
-                boxes.add(BoundingBox(
-                    RectF(
-                        results[offset + 0],
-                        results[offset + 1],
-                        results[offset + 2],
-                        results[offset + 3]
-                    ),
-                    confidence
-                ))
-            }
-
-        }
-        return boxes
-    }
-
-    private fun nms(boxes: ArrayList<BoundingBox>): ArrayList<BoundingBox> {
-        val nmsBoxes = ArrayList<BoundingBox>()
-        val prevBoxes = ArrayList<BoundingBox>(boxes)
-
-        while (prevBoxes.size > 0) {
-            prevBoxes.sortBy { it.confidence }
-            val currBoxes = ArrayList<BoundingBox>(prevBoxes)
-            val maxBox = currBoxes[0];
-            nmsBoxes.add(maxBox)
-            prevBoxes.clear()
-
-            for (i in 1 until currBoxes.size) {
-                val detection = currBoxes[i]
-                if (maxBox.iou(detection) < IOU_THRESHOLD)
-                    prevBoxes.add(detection)
-            }
-        }
-        return nmsBoxes
-    }
+class FaceDetectionHelper(private val engine: Engine, private val model: Model) {
 
     fun predict(inputTensor: List<Tensor>, outputTensor: List<Tensor>): List<BoundingBox> {
         engine.requestSync(model, inputTensor, outputTensor)
@@ -129,26 +57,53 @@ class FaceDetectionHelper(private val engine: Engine, private val model: Model, 
         }
         return nms(boxes)
 
-        /*
-        for (i in 0 until numFaces) {
-            val box = boundingBoxes[i]
-            val rect = RectF(
-                box.position.left * imageWidth,
-                box.position.top * imageHeight,
-                box.position.right * imageWidth,
-                box.position.bottom * imageHeight
-            )
-            rect.left = max(0f, rect.left)
-            rect.top = max(0f, rect.top)
-            rect.right = min(rect.right, imageWidth.toFloat())
-            rect.bottom = min(rect.bottom, imageHeight.toFloat())
-        }
-        */
     }
 
+    class BoundingBox(val location: RectF, val confidence: Float) {
+        fun iou (other: BoundingBox) : Float {
+            return intersection(other) / union(other)
+        }
+
+        private fun intersection (other: BoundingBox) : Float {
+            if (location.left < other.location.left || location.right > other.location.right ||
+                location.top < other.location.top || location.bottom > other.location.bottom) {
+                return 0f
+            }
+            return (min(location.right, other.location.right) - max(location.left, other.location.left)) *
+                    (min(location.bottom, other.location.bottom) - max(location.top, other.location.top))
+        }
+
+        private fun union (other: BoundingBox) : Float {
+            val intersection: Float = intersection(other)
+            val area1 = (location.right - location.left) * (location.bottom - location.top)
+            val area2 =
+                (other.location.right - other.location.left) * (other.location.bottom - other.location.top)
+            return area1 + area2 - intersection
+        }
+    }
+
+    private fun nms(boxes: ArrayList<BoundingBox>): ArrayList<BoundingBox> {
+        val nmsBoxes = ArrayList<BoundingBox>()
+        val prevBoxes = ArrayList<BoundingBox>(boxes)
+
+        while (prevBoxes.size > 0) {
+            prevBoxes.sortBy { it.confidence }
+            val currBoxes = ArrayList<BoundingBox>(prevBoxes)
+            val maxBox = currBoxes[0];
+            nmsBoxes.add(maxBox)
+            prevBoxes.clear()
+
+            for (i in 1 until currBoxes.size) {
+                val detection = currBoxes[i]
+                if (maxBox.iou(detection) < IOU_THRESHOLD)
+                    prevBoxes.add(detection)
+            }
+        }
+        return nmsBoxes
+    }
+
+
     companion object {
-        const val OBJECT_COUNT = 10
-        const val INPUT_SIZE : Int = 640
         val OUTPUT_SHAPE : List<Int> = listOf(16800, 16)
         const val SCORE_THRESHOLD : Float = 0.75f
         const val IOU_THRESHOLD : Float = 0.3f
