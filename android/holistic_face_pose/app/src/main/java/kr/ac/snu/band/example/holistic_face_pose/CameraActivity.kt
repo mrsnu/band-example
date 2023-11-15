@@ -70,7 +70,7 @@ class CameraActivity : AppCompatActivity() {
     private lateinit var activityCameraBinding: ActivityCameraBinding
 
     private lateinit var bitmapBuffer: Bitmap
-    private lateinit var inputBuffer : Buffer
+
 
     private val executor = Executors.newSingleThreadExecutor()
     private val permissions = listOf(Manifest.permission.CAMERA)
@@ -81,171 +81,9 @@ class CameraActivity : AppCompatActivity() {
 
     private var pauseAnalysis = false
     private var imageRotationDegrees: Int = 0
-    private lateinit var faceCropSize: RectF
-    private lateinit var poseCropSize: RectF
 
-    // Engine
-    private val engine by lazy {
-        Band.init()
+    private val holisticHelper by lazy { HolisticHelper(assets) }
 
-        val builder = ConfigBuilder()
-        builder.addPlannerLogPath("/data/local/tmp/log.json")
-        builder.addSchedulers(arrayOf<SchedulerType>(SchedulerType.HETEROGENEOUS_EARLIEST_FINISH_TIME))
-        builder.addMinimumSubgraphSize(7)
-        builder.addSubgraphPreparationType(SubgraphPreparationType.MERGE_UNIT_SUBGRAPH)
-        builder.addCPUMask(CpuMaskFlag.ALL)
-        builder.addPlannerCPUMask(CpuMaskFlag.PRIMARY)
-        builder.addWorkers(arrayOf<Device>(Device.CPU, Device.GPU, Device.DSP, Device.NPU))
-        builder.addWorkerNumThreads(intArrayOf(1, 1, 1, 1))
-        builder.addWorkerCPUMasks(
-            arrayOf<CpuMaskFlag>(
-                CpuMaskFlag.ALL, CpuMaskFlag.ALL,
-                CpuMaskFlag.ALL, CpuMaskFlag.ALL
-            ))
-        builder.addSmoothingFactor(0.1f)
-        builder.addProfileDataPath("/data/local/tmp/profile.json")
-        builder.addOnline(true)
-        builder.addNumWarmups(1)
-        builder.addNumRuns(1)
-        builder.addAllowWorkSteal(true)
-        builder.addAvailabilityCheckIntervalMs(30000)
-        builder.addScheduleWindowSize(10)
-        Engine(builder.build())
-    }
-
-    // Models
-    private val faceDetectorModel by lazy {
-        // Load mapped byte buffer from asset
-        val fileDescriptor = assets.openFd(FACE_DETECTOR_MODEL_PATH)
-        val inputStream = fileDescriptor.createInputStream()
-        val mappedBuffer = inputStream.channel.map(
-            FileChannel.MapMode.READ_ONLY, fileDescriptor.startOffset, fileDescriptor.declaredLength)
-        inputStream.close()
-        val model = Model(BackendType.TFLITE, mappedBuffer)
-        engine.registerModel(model)
-        model
-    }
-    private val faceLandmarksModel by lazy {
-        // Load mapped byte buffer from asset
-        val fileDescriptor = assets.openFd(FACE_LANDMARKS_MODEL_PATH)
-        val inputStream = fileDescriptor.createInputStream()
-        val mappedBuffer = inputStream.channel.map(
-            FileChannel.MapMode.READ_ONLY, fileDescriptor.startOffset, fileDescriptor.declaredLength)
-        inputStream.close()
-        val model = Model(BackendType.TFLITE, mappedBuffer)
-        engine.registerModel(model)
-        model
-    }
-    private val poseDetectorModel by lazy {
-        // Load mapped byte buffer from asset
-        val fileDescriptor = assets.openFd(POSE_DETECTOR_MODEL_PATH)
-        val inputStream = fileDescriptor.createInputStream()
-        val mappedBuffer = inputStream.channel.map(
-            FileChannel.MapMode.READ_ONLY, fileDescriptor.startOffset, fileDescriptor.declaredLength)
-        inputStream.close()
-        val model = Model(BackendType.TFLITE, mappedBuffer)
-        engine.registerModel(model)
-        model
-    }
-    private val poseLandmarksModel by lazy {
-        // Load mapped byte buffer from asset
-        val fileDescriptor = assets.openFd(POSE_LANDMARKS_MODEL_PATH)
-        val inputStream = fileDescriptor.createInputStream()
-        val mappedBuffer = inputStream.channel.map(
-            FileChannel.MapMode.READ_ONLY, fileDescriptor.startOffset, fileDescriptor.declaredLength)
-        inputStream.close()
-        val model = Model(BackendType.TFLITE, mappedBuffer)
-        engine.registerModel(model)
-        model
-    }
-
-    private val faceDetectorInputTensors by lazy {
-        List<Tensor>(engine.getNumInputTensors(faceDetectorModel)) { engine.createInputTensor(faceDetectorModel, it) }    // 1 is the number of input tensors
-    }
-    private val faceLandmarksInputTensors by lazy {
-        List<Tensor>(engine.getNumInputTensors(faceLandmarksModel)) { engine.createInputTensor(faceLandmarksModel, it) }    // 1 is the number of input tensors
-    }
-    private val faceDetectorOutputTensors by lazy {
-        List<Tensor>(engine.getNumOutputTensors(faceDetectorModel)) { engine.createOutputTensor(faceDetectorModel, it) }    // 4 is the number of output tensors
-    }
-    private val faceLandmarksOutputTensors by lazy {
-        List<Tensor>(engine.getNumOutputTensors(faceLandmarksModel)) { engine.createOutputTensor(faceLandmarksModel, it) }    // 4 is the number of output tensors
-    }
-    private val faceDetectorInputSize by lazy {
-        Size(faceDetectorInputTensors[0].dims[2], faceDetectorInputTensors[0].dims[1]) // Order of axis is: {1, height, width, 3}
-    }
-    private val faceLandmarksInputSize by lazy {
-        Size(faceLandmarksInputTensors[0].dims[2], faceLandmarksInputTensors[0].dims[1]) // Order of axis is: {1, height, width, 3}
-    }
-
-    private val poseDetectorInputTensors by lazy {
-        List<Tensor>(engine.getNumInputTensors(poseDetectorModel)) { engine.createInputTensor(poseDetectorModel, it) }    // 1 is the number of input tensors
-    }
-    private val poseLandmarksInputTensors by lazy {
-        List<Tensor>(engine.getNumInputTensors(poseLandmarksModel)) { engine.createInputTensor(poseLandmarksModel, it) }    // 1 is the number of input tensors
-    }
-    private val poseDetectorOutputTensors by lazy {
-        List<Tensor>(engine.getNumOutputTensors(poseDetectorModel)) { engine.createOutputTensor(poseDetectorModel, it) }    // 4 is the number of output tensors
-    }
-    private val poseLandmarksOutputTensors by lazy {
-        List<Tensor>(engine.getNumOutputTensors(poseLandmarksModel)) { engine.createOutputTensor(poseLandmarksModel, it) }    // 4 is the number of output tensors
-    }
-    private val poseDetectorInputSize by lazy {
-        Size(poseDetectorInputTensors[0].dims[2], poseDetectorInputTensors[0].dims[1]) // Order of axis is: {1, height, width, 3}
-    }
-    private val poseLandmarksInputSize by lazy {
-        Size(poseLandmarksInputTensors[0].dims[2], poseLandmarksInputTensors[0].dims[1]) // Order of axis is: {1, height, width, 3}
-    }
-
-    private val labels by lazy {
-        assets.open(LABELS_PATH).bufferedReader().useLines { it.toList() }
-    }
-    private val helper by lazy {
-        HolisticFaceHelper(engine, faceDetectorModel, faceLandmarksModel)
-    }
-    private val poseHelper by lazy {
-        HolisticPoseHelper(engine, poseDetectorModel, poseLandmarksModel)
-    }
-
-    private val imageProcessor by lazy {
-        val builder = ImageProcessorBuilder()
-        builder.addColorSpaceConvert(BufferFormat.RGB)
-        builder.addResize(faceDetectorInputSize.width, faceDetectorInputSize.height)
-        builder.addDataTypeConvert()
-        builder.build()
-    }
-    private val landmarksImageProcessor by lazy {
-        val builder = ImageProcessorBuilder()
-        builder.addColorSpaceConvert(BufferFormat.RGB)
-        builder.addCrop(faceCropSize.left.toInt(), faceCropSize.top.toInt(),
-            faceCropSize.right.toInt(), faceCropSize.bottom.toInt())
-        builder.addResize(faceLandmarksInputSize.width, faceLandmarksInputSize.height)
-        builder.addNormalize(0.0f, 255.0f)
-        builder.addDataTypeConvert()
-        builder.build()
-    }
-
-    private val poseDetectorImageProcessor by lazy {
-        val cropSize = minOf(bitmapBuffer.width, bitmapBuffer.height)
-        val cropStart = Size((bitmapBuffer.width - cropSize) / 2, (bitmapBuffer.height - cropSize) / 2)
-        val builder = ImageProcessorBuilder()
-        builder.addColorSpaceConvert(BufferFormat.RGB)
-        // center crop
-        builder.addCrop(cropStart.width, cropStart.height, cropStart.width + cropSize - 1, cropStart.height + cropSize - 1)
-        builder.addResize(poseDetectorInputSize.width, poseDetectorInputSize.height)
-        builder.addRotate(-imageRotationDegrees)
-        builder.build()
-    }
-    private val poseLandmarkImageProcessor by lazy {
-        val builder = ImageProcessorBuilder()
-        builder.addColorSpaceConvert(BufferFormat.RGB)
-        builder.addCrop(poseCropSize.left.toInt(), poseCropSize.top.toInt(),
-            poseCropSize.right.toInt(), poseCropSize.bottom.toInt())
-        builder.addResize(faceLandmarksInputSize.width, faceLandmarksInputSize.height)
-        builder.addNormalize(0.0f, 255.0f)
-        builder.addDataTypeConvert()
-        builder.build()
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -336,64 +174,8 @@ class CameraActivity : AppCompatActivity() {
                     return@Analyzer
                 }
 
-                // get non-null image
-                val realImage = image.image ?: return@Analyzer
-                inputBuffer = Buffer(realImage.planes, image.width, image.height, BufferFormat.YV12)
-
-                /* FACE PIPELINE */
-                imageProcessor.process(inputBuffer, faceDetectorInputTensors[0])
+                holisticHelper.predict(image)
                 image.close()
-                // Perform the face & pose pipeline for the current frame
-                var predictions =
-                    helper.detectorPredict(faceDetectorInputTensors, faceDetectorOutputTensors)
-                makeBoxesSquare(predictions, PADDING_RATIO)
-                val bestFace = predictions.maxByOrNull { it.score }
-                reportPrediction2(bestFace)
-                if (predictions.isNotEmpty()) {
-                    if (bestFace != null) {
-                        faceCropSize = RectF(
-                                bestFace.box.left * bitmapBuffer.width,
-                                bestFace.box.top * bitmapBuffer.height,
-                                bestFace.box.right * bitmapBuffer.width,
-                                bestFace.box.bottom * bitmapBuffer.height
-                            )
-                        landmarksImageProcessor.process(
-                            inputBuffer,
-                            faceLandmarksInputTensors[0]
-                        )
-                        val landmarks = helper.landmarksPredict(
-                            faceLandmarksInputTensors,
-                            faceLandmarksOutputTensors
-                        )
-                        faceReportLandmarks(landmarks, faceCropSize)
-                    }
-                }
-
-
-                // POSE PIPELINE
-                poseDetectorImageProcessor.process(inputBuffer, poseDetectorInputTensors[0])
-                image.close()
-                // Perform the face & pose pipeline for the current frame
-                var posePredictions =
-                    poseHelper.detectorPredict(poseDetectorInputTensors, poseDetectorOutputTensors)
-                if(posePredictions.isNotEmpty()) {
-                    posePredictions.sortByDescending { it.score }
-                    val bestPerson = posePredictions[0]
-                    poseCropSize = RectF(
-                        bestPerson.box.left * bitmapBuffer.width,
-                        bestPerson.box.top * bitmapBuffer.height,
-                        bestPerson.box.right * bitmapBuffer.width,
-                        bestPerson.box.bottom * bitmapBuffer.height
-                    )
-                    poseLandmarkImageProcessor.process(inputBuffer, poseLandmarksInputTensors[0])
-                    var poseLandmarks = poseHelper.landmarksPredict(poseLandmarksInputTensors, poseLandmarksOutputTensors)
-                    for( landmark in poseLandmarks ){
-                        landmark.x *= poseCropSize.width()
-                        landmark.y *= poseCropSize.height()
-                    }
-                    poseReportLandmarks(poseLandmarks, poseCropSize)
-                    Log.d("HYUNSOO", "After: $poseLandmarks")
-                }
 
                 // Compute the FPS of the entire pipeline
                 val frameCount = 10
@@ -422,26 +204,6 @@ class CameraActivity : AppCompatActivity() {
     }
 
 
-    private fun makeBoxesSquare(boxes: List<HolisticFaceHelper.FaceBoxPrediction>, paddingRate: Float): List<HolisticFaceHelper.FaceBoxPrediction>{
-        for (faceBox in boxes){
-            val box = faceBox.box
-
-            val width = box.width() * bitmapBuffer.width
-            val height = box.height() * bitmapBuffer.height
-
-            val centerX = ((box.left + box.right) / 2) * bitmapBuffer.width
-            val centerY = ((box.top + box.bottom) / 2) * bitmapBuffer.height
-
-            val size = if (height < width) height else width
-            val paddedSize = (1f + paddingRate) * size
-
-            box.top = (centerY - paddedSize / 2) / bitmapBuffer.height
-            box.bottom = (centerY + paddedSize / 2) / bitmapBuffer.height
-            box.left = (centerX - paddedSize / 2) / bitmapBuffer.width
-            box.right = (centerX + paddedSize / 2) / bitmapBuffer.width
-        }
-        return boxes
-    }
 
     private fun reportPrediction2(faceBoxPrediction: HolisticFaceHelper.FaceBoxPrediction?) {
         if (faceBoxPrediction != null)
@@ -570,13 +332,6 @@ class CameraActivity : AppCompatActivity() {
         private const val ACCURACY_THRESHOLD = 0.2f
         private const val MAX_NUM_FACES = 1
         private const val LABELS_PATH = "coco_ssd_mobilenet_v1_1.0_labels.txt"
-        private const val PADDING_RATIO = 0.75f
 
-        // Pose pipeline: SSD-MobilenetV2 + MoveNet Lightning
-        // Face pipeline: RetinaFace-MobilenetV2 + FaceMesh
-        private const val POSE_DETECTOR_MODEL_PATH = "ssd_mobilenet_v2_coco_quant_postprocess.tflite"
-        private const val POSE_LANDMARKS_MODEL_PATH = "lite-model_movenet_singlepose_lightning_tflite_int8_4.tflite"
-        private const val FACE_DETECTOR_MODEL_PATH = "retinaface-mbv2-int8.tflite" // (1, 160, 160, 3) -> [(1, 1050, 2), (1, 1050, 4), (1, 1050, 10)]
-        private const val FACE_LANDMARKS_MODEL_PATH = "face_landmark_192_full_integer_quant.tflite" // (1, 192, 192, 3) -> [(1, 1, 1, 1404), (1, 1, 1, 1)]
     }
 }
