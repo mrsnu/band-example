@@ -16,64 +16,157 @@
 
 package kr.ac.snu.band.example.holistic_face_pose
 
+import android.R.attr.height
+import android.R.attr.width
 import android.graphics.RectF
-
+import android.util.Log
 import org.mrsnu.band.Engine
 import org.mrsnu.band.Model
 import org.mrsnu.band.Tensor
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.max
+import kotlin.math.min
+
 
 /**
  * Helper class used to communicate between our app and the Band detection model
  */
-class HolisticFacePoseHelper(private val engine: Engine, private val model: Model, private val labels: List<String>) {
+class HolisticFaceHelper(private val engine: Engine, private val faceDetectorModel: Model, private val faceLandmarksModel: Model) {
+
+    // retinaface detector:  (1, 640, 640, 3) -> [(16800, 16)]
+    // landmarks: (1, 192, 192, 3) -> [(1, 1, 1, 1404), (1, 1, 1, 1)]
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     /** Abstraction object that wraps a prediction output in an easy to parse way */
-    data class ObjectPrediction(val location: RectF, val label: String, val score: Float)
+    data class Landmark(var x: Float, var y: Float, var z: Float)
+    data class FaceBoxPrediction(val box: RectF, val score: Float)
 
-    fun predict(inputTensor : List<Tensor>, outputTensor: List<Tensor>): List<ObjectPrediction> {
-        engine.requestSync(model, inputTensor, outputTensor)
+    fun detectorPredict(inputTensors : List<Tensor>, outputTensors: List<Tensor>): List<FaceBoxPrediction> {
+        // inference
+        engine.requestSync(faceDetectorModel, inputTensors, outputTensors)
 
-        val outputBuffer = mutableMapOf<Int, FloatArray>(
-            0 to FloatArray(4 * OBJECT_COUNT),
-            1 to FloatArray(OBJECT_COUNT),
-            2 to FloatArray(OBJECT_COUNT),
-            3 to FloatArray(1)
-        )
+        // post process face detector output
+        var faceBoxes = ArrayList<FaceBoxPrediction>()
+        val outputBuffer = FloatArray(DET_NUM_RESULTS * DET_LEN_RESULT)
+        val byteBuffer = outputTensors[0].data.order(ByteOrder.nativeOrder()).rewind()
+        (byteBuffer as ByteBuffer).asFloatBuffer().get(outputBuffer)
 
-        outputTensor.forEachIndexed { index, tensor ->
-            // byteBuffer to floatArray
-            val byteBuffer = tensor.data.order(ByteOrder.nativeOrder()).rewind()
-            (byteBuffer as ByteBuffer).asFloatBuffer().get(outputBuffer[index])
+        // Get detected faces
+        for(i in 0 until DET_NUM_RESULTS){
+            val confidence = outputBuffer[i * DET_LEN_RESULT + 15]
+            if (confidence > SCORE_THRESH){
+                Log.d("HYUNSOO", "BOX: ${"%.02f".format(outputBuffer?.get(4 * i + 0) ?: 0f)},  " +
+                        "${"%.02f".format(outputBuffer?.get(4 * i + 1) ?: 0f)}," +
+                        " ${"%.02f".format(outputBuffer?.get(4 * i + 2) ?: 0f)}, " +
+                        " ${"%.02f".format(outputBuffer?.get(4 * i + 3) ?: 0f)}")
+                faceBoxes.add(
+                    FaceBoxPrediction(
+                        box = RectF(
+                            outputBuffer[i * DET_LEN_RESULT + 0] ?: 0f,
+                            outputBuffer[i * DET_LEN_RESULT + 1] ?: 0f,
+                            outputBuffer[i * DET_LEN_RESULT + 2] ?: 0f,
+                            outputBuffer[i * DET_LEN_RESULT + 3] ?: 0f
+                        ),
+                        score = confidence
+                    )
+                )
+            }
         }
 
-        return (0 until OBJECT_COUNT).map {
-            val locationBuffer = outputBuffer[0]
-            val labelBuffer = outputBuffer[1]
-            val scoreBuffer = outputBuffer[2]
+        // TODO: FILTER_BOXES_BY_SIZE + NMS + SQUARE_BOXES
+        // FILTER_BOXES_BY_SIZE
+        faceBoxes = filterBoxesBySize(faceBoxes)
+        // NMS
+        faceBoxes = nms(faceBoxes, IOU_THRESHOLD)
+        // SQUARE_BOXES
 
-            ObjectPrediction(
-                // The locations are an array of [0, 1] floats for [top, left, bottom, right]
-                location = RectF(
-                    locationBuffer?.get(4 * it + 1) ?: 0f,
-                    locationBuffer?.get(4 * it) ?: 0f,
-                    locationBuffer?.get(4 * it + 3) ?: 0f,
-                    locationBuffer?.get(4 * it + 2) ?: 0f
-                ),
+        return faceBoxes
+    }
 
-                // SSD Mobilenet V1 Model assumes class 0 is background class
-                // in label file and class labels start from 1 to number_of_classes + 1,
-                // while outputClasses correspond to class index from 0 to number_of_classes
-                label = labels[1 + (labelBuffer?.get(it)?.toInt() ?: 0)],
+    private fun filterBoxesBySize(boxes: ArrayList<FaceBoxPrediction>): ArrayList<FaceBoxPrediction> {
+        val returnBoxes = ArrayList<FaceBoxPrediction>()
+        for (box in boxes){
+            if (box.box.width() * box.box.height() < SIZE_RATIO){
+                returnBoxes.add(box)
+            }
+        }
+        return returnBoxes
+    }
 
-                // Score is a single value of [0, 1]
-                score = scoreBuffer?.get(it) ?: 0f
+    private fun boxArea(box: RectF): Float {
+        return box.width() * box.height()
+    }
+    private fun boxIntersection(boxA: RectF, boxB: RectF): Float {
+        if (boxA.right <= boxB.left || boxB.right <= boxA.left) return 0f
+        if (boxA.bottom <= boxB.top || boxB.bottom <= boxA.top) return 0f
+
+        return (min(boxA.right, boxB.right) - max(boxA.left, boxB.left)) *
+                (min(boxA.bottom, boxB.bottom) - max(boxA.top, boxA.top))
+    }
+    private fun boxUnion(boxA: RectF, boxB: RectF): Float {
+        return boxArea(boxA) + boxArea(boxB) - boxIntersection(boxA, boxB)
+    }
+    private fun boxIou(boxA: RectF, boxB: RectF): Float{
+        return boxIntersection(boxA, boxB) / boxUnion(boxA, boxB)
+    }
+    private fun nms(boxes: MutableList<FaceBoxPrediction>, iouThreshold: Float): ArrayList<FaceBoxPrediction> {
+        val nmsBoxes = ArrayList<FaceBoxPrediction>()
+
+        while(boxes.size > 0){
+            boxes.sortByDescending { it.score }
+            val currBoxes = ArrayList<FaceBoxPrediction>(boxes)
+            val maxBox = currBoxes[0]
+            nmsBoxes.add(maxBox)
+            boxes.clear()
+            assert(boxes.size == 0)
+
+            for( i in 1 until currBoxes.size){
+                val currBox = currBoxes[i]
+                if(boxIou(maxBox.box, currBox.box) < iouThreshold) {
+                    boxes.add(currBox)
+                }
+            }
+        }
+        return nmsBoxes
+    }
+
+    fun landmarksPredict(inputTensors : List<Tensor>, outputTensors: List<Tensor>): ArrayList<Landmark> {
+        // inference
+        engine.requestSync(faceLandmarksModel, inputTensors, outputTensors)
+
+        // post process face landmarks output
+        val outputBuffer = FloatArray(LND_NUM_RESULTS * LND_LEN_RESULT)
+        val byteBuffer = outputTensors[0].data.order(ByteOrder.nativeOrder()).rewind()
+        (byteBuffer as ByteBuffer).asFloatBuffer().get(outputBuffer)
+
+        val faceLandmarksPrediction = ArrayList<Landmark>()
+
+        // Get detected faces
+        for(i in 0 until LND_NUM_RESULTS){
+            faceLandmarksPrediction.add(
+                Landmark(
+                    outputBuffer[i * LND_LEN_RESULT + 0] ?: 0f,
+                    outputBuffer[i * LND_LEN_RESULT + 1] ?: 0f,
+                    outputBuffer[i * LND_LEN_RESULT + 0] ?: 0f
+                )
             )
         }
+        return faceLandmarksPrediction
     }
 
     companion object {
-        const val OBJECT_COUNT = 10
+        const val MAX_FACE_COUNT = 5
+        const val DET_NUM_RESULTS = 16800
+        const val DET_LEN_RESULT = 16
+        const val SCORE_THRESH = 0.2f
+        const val SIZE_RATIO = 0.3f
+        const val IOU_THRESHOLD = 0.6f
+
+        const val LND_NUM_RESULTS = 468
+        const val LND_LEN_RESULT = 3
     }
 }
