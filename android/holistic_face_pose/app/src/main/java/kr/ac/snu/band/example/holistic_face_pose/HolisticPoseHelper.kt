@@ -30,10 +30,10 @@ import java.nio.ByteOrder
  */
 class HolisticPoseHelper(private val engine: Engine, private val poseDetectorModel: Model, private val poseLandmarksModel: Model) {
 
-    data class ObjectPrediction(val box: RectF, val label: String, val score: Float)
+    data class PosePrediction(val box: RectF, val label: String, val score: Float)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    fun detectorPredict(inputTensors: List<Tensor>, outputTensors: List<Tensor>): ArrayList<ObjectPrediction> {
+    fun detectorPredict(inputTensors: List<Tensor>, outputTensors: List<Tensor>): ArrayList<PosePrediction> {
         // inference
         engine.requestSync(poseDetectorModel, inputTensors, outputTensors)
 
@@ -50,12 +50,12 @@ class HolisticPoseHelper(private val engine: Engine, private val poseDetectorMod
         val classByteBuffer = outputTensors[1].data.order(ByteOrder.nativeOrder()).rewind()
         (classByteBuffer as ByteBuffer).asFloatBuffer().get(classResults)
 
-        var objects = ArrayList<ObjectPrediction>()
+        var objects = ArrayList<PosePrediction>()
         for (i in 0 until DET_NUM_RESULTS){
             val confidence = confResults[i]
             if(confidence > SCORE_THRESH && classResults[i].toInt() == 0){
                 objects.add(
-                    ObjectPrediction(
+                    PosePrediction(
                         box = RectF(
                             boxResults[i * DET_LEN_RESULT + 1] ?: 0f,
                             boxResults[i * DET_LEN_RESULT + 0] ?: 0f,
@@ -95,8 +95,8 @@ class HolisticPoseHelper(private val engine: Engine, private val poseDetectorMod
         return poseLandmarksPrediction
     }
 
-    private fun filterBoxesBySize(boxes: ArrayList<ObjectPrediction>): ArrayList<ObjectPrediction> {
-        val returnBoxes = ArrayList<ObjectPrediction>()
+    private fun filterBoxesBySize(boxes: ArrayList<PosePrediction>): ArrayList<PosePrediction> {
+        val returnBoxes = ArrayList<PosePrediction>()
         for (box in boxes){
             if (box.box.width() * box.box.height() < HolisticFaceHelper.SIZE_RATIO){
                 returnBoxes.add(box)

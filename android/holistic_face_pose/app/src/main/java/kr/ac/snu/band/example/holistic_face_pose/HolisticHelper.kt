@@ -25,11 +25,22 @@ import java.nio.channels.FileChannel
 class HolisticHelper(assetManager: AssetManager) {
 
     data class ImageProperties (val width: Int, val height: Int, val rotationDegrees: Int, var isInitialized: Boolean)
+    data class Holistic (
+        var faceDetection: HolisticFaceHelper.FaceBoxPrediction?,
+        var faceLandmarks: ArrayList<HolisticFaceHelper.Landmark>?,
+        var poseDetection: HolisticPoseHelper.PosePrediction?,
+        var poseLandmarks: ArrayList<HolisticFaceHelper.Landmark>?
+    )
+
 
     private lateinit var inputBuffer : Buffer
     private lateinit var faceCropSize: RectF
     private lateinit var poseCropSize: RectF
     private var cameraImageProperties = ImageProperties(0, 0, 0, false)
+    private var faceDetection: HolisticFaceHelper.FaceBoxPrediction? = null
+    private var faceLandmarks: ArrayList<HolisticFaceHelper.Landmark>? = null
+    private var poseDetection: HolisticPoseHelper.PosePrediction? = null
+    private var poseLandmarks: ArrayList<HolisticFaceHelper.Landmark>? = null
 
     // Engine
     private val engine by lazy {
@@ -144,7 +155,7 @@ class HolisticHelper(assetManager: AssetManager) {
         Size(poseLandmarksInputTensors[0].dims[2], poseLandmarksInputTensors[0].dims[1]) // Order of axis is: {1, height, width, 3}
     }
 
-    private val helper by lazy {
+    private val faceHelper by lazy {
         HolisticFaceHelper(engine, faceDetectorModel, faceLandmarksModel)
     }
     private val poseHelper by lazy {
@@ -185,52 +196,59 @@ class HolisticHelper(assetManager: AssetManager) {
         builder.addColorSpaceConvert(BufferFormat.RGB)
         builder.addCrop(poseCropSize.left.toInt(), poseCropSize.top.toInt(),
             poseCropSize.right.toInt(), poseCropSize.bottom.toInt())
-        builder.addResize(faceLandmarksInputSize.width, faceLandmarksInputSize.height)
+        builder.addResize(poseLandmarksInputSize.width, poseLandmarksInputSize.height)
         builder.addNormalize(0.0f, 255.0f)
         builder.addDataTypeConvert()
         builder.build()
     }
 
     @SuppressLint("UnsafeOptInUsageError")
-    fun predict(image: ImageProxy){
+    fun predict(image: ImageProxy): Holistic?{
         if(!cameraImageProperties.isInitialized){
             cameraImageProperties = ImageProperties(image.width, image.height, image.imageInfo.rotationDegrees, true)
         }
 
-        val realImage = image.image ?: return
+        val realImage = image.image ?: return null
         inputBuffer = Buffer(realImage.planes, cameraImageProperties.width, cameraImageProperties.height, BufferFormat.YV12)
 
+        predictFace()
+        predictPose()
+
+        Log.d("HYUNSOO", "$faceDetection, $faceLandmarks, $poseDetection, $poseLandmarks")
+        return Holistic(faceDetection, faceLandmarks, poseDetection, poseLandmarks)
+    }
+
+    private fun predictFace(){
         /* FACE PIPELINE */
         imageProcessor.process(inputBuffer, faceDetectorInputTensors[0])
 
         // Perform the face & pose pipeline for the current frame
         var predictions =
-            helper.detectorPredict(faceDetectorInputTensors, faceDetectorOutputTensors)
+            faceHelper.detectorPredict(faceDetectorInputTensors, faceDetectorOutputTensors)
         makeBoxesSquare(predictions, PADDING_RATIO)
-        val bestFace = predictions.maxByOrNull { it.score }
-//        reportPrediction2(bestFace)
-        if (predictions.isNotEmpty()) {
-            if (bestFace != null) {
-                faceCropSize = RectF(
-                    bestFace.box.left * cameraImageProperties.width,
-                    bestFace.box.top * cameraImageProperties.height,
-                    bestFace.box.right * cameraImageProperties.width,
-                    bestFace.box.bottom * cameraImageProperties.height
-                )
-                landmarksImageProcessor.process(
-                    inputBuffer,
-                    faceLandmarksInputTensors[0]
-                )
-                val landmarks = helper.landmarksPredict(
-                    faceLandmarksInputTensors,
-                    faceLandmarksOutputTensors
-                )
-                Log.d("HYUNSOO", landmarks.toString())
-//                faceReportLandmarks(landmarks, faceCropSize)
-            }
+        faceDetection = predictions.maxByOrNull { it.score }
+
+        if (faceDetection != null) {
+            faceCropSize = RectF(
+                faceDetection!!.box.left * cameraImageProperties.width,
+                faceDetection!!.box.top * cameraImageProperties.height,
+                faceDetection!!.box.right * cameraImageProperties.width,
+                faceDetection!!.box.bottom * cameraImageProperties.height
+            )
+            landmarksImageProcessor.process(
+                inputBuffer,
+                faceLandmarksInputTensors[0]
+            )
+            faceLandmarks = faceHelper.landmarksPredict(
+                faceLandmarksInputTensors,
+                faceLandmarksOutputTensors
+            )
+            Log.d("HYUNSOO", faceLandmarks.toString())
         }
 
+    }
 
+    private fun predictPose(){
         // POSE PIPELINE
         poseDetectorImageProcessor.process(inputBuffer, poseDetectorInputTensors[0])
 
@@ -239,23 +257,21 @@ class HolisticHelper(assetManager: AssetManager) {
             poseHelper.detectorPredict(poseDetectorInputTensors, poseDetectorOutputTensors)
         if(posePredictions.isNotEmpty()) {
             posePredictions.sortByDescending { it.score }
-            val bestPerson = posePredictions[0]
+            poseDetection = posePredictions[0]
             poseCropSize = RectF(
-                bestPerson.box.left * cameraImageProperties.width,
-                bestPerson.box.top * cameraImageProperties.height,
-                bestPerson.box.right * cameraImageProperties.width,
-                bestPerson.box.bottom * cameraImageProperties.height
+                poseDetection!!.box.left * cameraImageProperties.width,
+                poseDetection!!.box.top * cameraImageProperties.height,
+                poseDetection!!.box.right * cameraImageProperties.width,
+                poseDetection!!.box.bottom * cameraImageProperties.height
             )
             poseLandmarkImageProcessor.process(inputBuffer, poseLandmarksInputTensors[0])
-            var poseLandmarks = poseHelper.landmarksPredict(poseLandmarksInputTensors, poseLandmarksOutputTensors)
-            for( landmark in poseLandmarks ){
+            poseLandmarks = poseHelper.landmarksPredict(poseLandmarksInputTensors, poseLandmarksOutputTensors)
+            for( landmark in poseLandmarks!! ){
                 landmark.x *= poseCropSize.width()
                 landmark.y *= poseCropSize.height()
             }
-//            poseReportLandmarks(poseLandmarks, poseCropSize)
-            Log.d("HYUNSOO", "After: $poseLandmarks")
-        }
 
+        }
     }
 
     private fun makeBoxesSquare(boxes: List<HolisticFaceHelper.FaceBoxPrediction>, paddingRate: Float): List<HolisticFaceHelper.FaceBoxPrediction>{

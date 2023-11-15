@@ -173,9 +173,12 @@ class CameraActivity : AppCompatActivity() {
                     image.close()
                     return@Analyzer
                 }
-
-                holisticHelper.predict(image)
+                Log.d("HYUNSOO", "Just checking...")
+                val predictions = holisticHelper.predict(image)
                 image.close()
+                if (predictions != null) {
+                    drawPredictions(predictions)
+                }
 
                 // Compute the FPS of the entire pipeline
                 val frameCount = 10
@@ -203,7 +206,19 @@ class CameraActivity : AppCompatActivity() {
         }, ContextCompat.getMainExecutor(this))
     }
 
+    private fun drawPredictions(predictions: HolisticHelper.Holistic){
+        if (predictions.faceDetection != null)
+            activityCameraBinding.faceBoxPrediction?.setRect(predictions.faceDetection!!.box)
+        activityCameraBinding.faceBoxPrediction?.invalidate()
 
+        if (predictions.faceLandmarks != null)
+            activityCameraBinding.faceLandmarksPrediction?.setLandmarks(predictions.faceLandmarks!!, predictions.faceDetection!!.box)
+        activityCameraBinding.faceLandmarksPrediction?.invalidate()
+
+        if (predictions.poseDetection != null && predictions.poseLandmarks != null)
+            activityCameraBinding.poseLandmarksPrediction?.setLandmarks(predictions.poseLandmarks!!, predictions.poseDetection!!.box)
+        activityCameraBinding.poseLandmarksPrediction?.invalidate()
+    }
 
     private fun reportPrediction2(faceBoxPrediction: HolisticFaceHelper.FaceBoxPrediction?) {
         if (faceBoxPrediction != null)
