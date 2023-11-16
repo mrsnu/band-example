@@ -20,6 +20,7 @@ import android.R.attr.height
 import android.R.attr.width
 import android.graphics.RectF
 import android.util.Log
+import android.util.Size
 import org.mrsnu.band.Engine
 import org.mrsnu.band.Model
 import org.mrsnu.band.Tensor
@@ -105,7 +106,7 @@ class HolisticFaceHelper(private val engine: Engine, private val faceDetectorMod
         if (boxA.bottom <= boxB.top || boxB.bottom <= boxA.top) return 0f
 
         return (min(boxA.right, boxB.right) - max(boxA.left, boxB.left)) *
-                (min(boxA.bottom, boxB.bottom) - max(boxA.top, boxA.top))
+                (min(boxA.bottom, boxB.bottom) - max(boxA.top, boxB.top))
     }
     private fun boxUnion(boxA: RectF, boxB: RectF): Float {
         return boxArea(boxA) + boxArea(boxB) - boxIntersection(boxA, boxB)
@@ -134,7 +135,7 @@ class HolisticFaceHelper(private val engine: Engine, private val faceDetectorMod
         return nmsBoxes
     }
 
-    fun landmarksPredict(inputTensors : List<Tensor>, outputTensors: List<Tensor>): ArrayList<Landmark> {
+    fun landmarksPredict(inputTensors : List<Tensor>, outputTensors: List<Tensor>, inputSize: Size): ArrayList<Landmark> {
         // inference
         engine.requestSync(faceLandmarksModel, inputTensors, outputTensors)
 
@@ -149,8 +150,8 @@ class HolisticFaceHelper(private val engine: Engine, private val faceDetectorMod
         for(i in 0 until LND_NUM_RESULTS){
             faceLandmarksPrediction.add(
                 Landmark(
-                    outputBuffer[i * LND_LEN_RESULT + 0] ?: 0f,
-                    outputBuffer[i * LND_LEN_RESULT + 1] ?: 0f,
+                    (outputBuffer[i * LND_LEN_RESULT + 0] / inputSize.width) ?: 0f,
+                    (outputBuffer[i * LND_LEN_RESULT + 1] / inputSize.height) ?: 0f,
                     outputBuffer[i * LND_LEN_RESULT + 0] ?: 0f
                 )
             )
@@ -159,7 +160,6 @@ class HolisticFaceHelper(private val engine: Engine, private val faceDetectorMod
     }
 
     companion object {
-        const val MAX_FACE_COUNT = 5
         const val DET_NUM_RESULTS = 16800
         const val DET_LEN_RESULT = 16
         const val SCORE_THRESH = 0.2f

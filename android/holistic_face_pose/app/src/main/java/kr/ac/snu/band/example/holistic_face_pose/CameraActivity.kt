@@ -17,21 +17,21 @@
 package kr.ac.snu.band.example.holistic_face_pose
 
 import android.Manifest
-import android.R
+import android.R.attr.bitmap
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Color
+import android.graphics.BitmapFactory
 import android.graphics.Matrix
-import android.graphics.Paint
 import android.graphics.RectF
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.util.Size
 import android.view.View
 import android.view.ViewGroup
+import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.AspectRatio
 import androidx.camera.core.CameraSelector
@@ -42,22 +42,9 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import kr.ac.snu.band.example.holistic_face_pose.databinding.ActivityCameraBinding
-
-import org.mrsnu.band.BackendType
-import org.mrsnu.band.Band
 import org.mrsnu.band.Buffer
 import org.mrsnu.band.BufferFormat
-import org.mrsnu.band.ConfigBuilder
-import org.mrsnu.band.CpuMaskFlag
-import org.mrsnu.band.Device
-import org.mrsnu.band.Engine
-import org.mrsnu.band.ImageProcessorBuilder
-import org.mrsnu.band.Model
-import org.mrsnu.band.SchedulerType
-import org.mrsnu.band.SubgraphPreparationType
-import org.mrsnu.band.Tensor
-
-import java.nio.channels.FileChannel
+import java.nio.ByteBuffer
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.math.min
@@ -83,7 +70,6 @@ class CameraActivity : AppCompatActivity() {
     private var imageRotationDegrees: Int = 0
 
     private val holisticHelper by lazy { HolisticHelper(assets) }
-
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -132,7 +118,6 @@ class CameraActivity : AppCompatActivity() {
     /** Declare and bind preview and analysis use cases */
     @SuppressLint("UnsafeExperimentalUsageError", "UnsafeOptInUsageError")
     private fun bindCameraUseCases() = activityCameraBinding.viewFinder.post {
-
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
         cameraProviderFuture.addListener ({
 
@@ -163,9 +148,10 @@ class CameraActivity : AppCompatActivity() {
                     imageRotationDegrees = image.imageInfo.rotationDegrees
                     bitmapBuffer = Bitmap.createBitmap(
                         image.width, image.height, Bitmap.Config.ARGB_8888)
-
-                    activityCameraBinding.faceBoxPrediction?.setCanvasSize(
-                        Size(activityCameraBinding.viewFinder.width, activityCameraBinding.viewFinder.height))
+                    activityCameraBinding.faceLandmarksPrediction?.setCanvasSize(
+                        Size(activityCameraBinding.viewFinder.width, activityCameraBinding.viewFinder.height), "face")
+                    activityCameraBinding.poseLandmarksPrediction?.setCanvasSize(
+                        Size(activityCameraBinding.viewFinder.width, activityCameraBinding.viewFinder.height), "pose")
                 }
 
                 // Early exit: image analysis is in paused state
@@ -173,7 +159,6 @@ class CameraActivity : AppCompatActivity() {
                     image.close()
                     return@Analyzer
                 }
-                Log.d("HYUNSOO", "Just checking...")
                 val predictions = holisticHelper.predict(image)
                 image.close()
                 if (predictions != null) {
@@ -207,16 +192,16 @@ class CameraActivity : AppCompatActivity() {
     }
 
     private fun drawPredictions(predictions: HolisticHelper.Holistic){
-        if (predictions.faceDetection != null)
-            activityCameraBinding.faceBoxPrediction?.setRect(predictions.faceDetection!!.box)
-        activityCameraBinding.faceBoxPrediction?.invalidate()
-
-        if (predictions.faceLandmarks != null)
+        if (predictions.faceLandmarks != null && predictions.faceDetection != null)
             activityCameraBinding.faceLandmarksPrediction?.setLandmarks(predictions.faceLandmarks!!, predictions.faceDetection!!.box)
         activityCameraBinding.faceLandmarksPrediction?.invalidate()
 
-        if (predictions.poseDetection != null && predictions.poseLandmarks != null)
-            activityCameraBinding.poseLandmarksPrediction?.setLandmarks(predictions.poseLandmarks!!, predictions.poseDetection!!.box)
+        if (predictions.poseDetection != null && predictions.poseLandmarks != null) {
+            activityCameraBinding.poseLandmarksPrediction?.setLandmarks(
+                predictions.poseLandmarks!!,
+                predictions.poseDetection!!.box
+            )
+        }
         activityCameraBinding.poseLandmarksPrediction?.invalidate()
     }
 
@@ -345,8 +330,5 @@ class CameraActivity : AppCompatActivity() {
         private val TAG = CameraActivity::class.java.simpleName
 
         private const val ACCURACY_THRESHOLD = 0.2f
-        private const val MAX_NUM_FACES = 1
-        private const val LABELS_PATH = "coco_ssd_mobilenet_v1_1.0_labels.txt"
-
     }
 }

@@ -21,10 +21,20 @@ import org.mrsnu.band.SchedulerType
 import org.mrsnu.band.SubgraphPreparationType
 import org.mrsnu.band.Tensor
 import java.nio.channels.FileChannel
+import kotlin.math.max
+import kotlin.math.min
 
 class HolisticHelper(assetManager: AssetManager) {
 
     data class ImageProperties (val width: Int, val height: Int, val rotationDegrees: Int, var isInitialized: Boolean)
+    data class HolisticFace (
+        var faceDetection: HolisticFaceHelper.FaceBoxPrediction?,
+        var faceLandmarks: ArrayList<HolisticFaceHelper.Landmark>?
+    )
+    data class HolisticPose (
+        var poseDetection: HolisticPoseHelper.PosePrediction?,
+        var poseLandmarks: ArrayList<HolisticFaceHelper.Landmark>?
+    )
     data class Holistic (
         var faceDetection: HolisticFaceHelper.FaceBoxPrediction?,
         var faceLandmarks: ArrayList<HolisticFaceHelper.Landmark>?,
@@ -32,8 +42,6 @@ class HolisticHelper(assetManager: AssetManager) {
         var poseLandmarks: ArrayList<HolisticFaceHelper.Landmark>?
     )
 
-
-    private lateinit var inputBuffer : Buffer
     private lateinit var faceCropSize: RectF
     private lateinit var poseCropSize: RectF
     private var cameraImageProperties = ImageProperties(0, 0, 0, false)
@@ -159,7 +167,8 @@ class HolisticHelper(assetManager: AssetManager) {
         HolisticFaceHelper(engine, faceDetectorModel, faceLandmarksModel)
     }
     private val poseHelper by lazy {
-        HolisticPoseHelper(engine, poseDetectorModel, poseLandmarksModel)
+        val labels = assetManager.open(LABEL_PATH).bufferedReader().useLines { it.toList() }
+        HolisticPoseHelper(engine, poseDetectorModel, poseLandmarksModel, labels)
     }
 
     private val imageProcessor by lazy {
@@ -197,8 +206,6 @@ class HolisticHelper(assetManager: AssetManager) {
         builder.addCrop(poseCropSize.left.toInt(), poseCropSize.top.toInt(),
             poseCropSize.right.toInt(), poseCropSize.bottom.toInt())
         builder.addResize(poseLandmarksInputSize.width, poseLandmarksInputSize.height)
-        builder.addNormalize(0.0f, 255.0f)
-        builder.addDataTypeConvert()
         builder.build()
     }
 
@@ -209,16 +216,16 @@ class HolisticHelper(assetManager: AssetManager) {
         }
 
         val realImage = image.image ?: return null
-        inputBuffer = Buffer(realImage.planes, cameraImageProperties.width, cameraImageProperties.height, BufferFormat.YV12)
+        val inputBuffer = Buffer(realImage.planes, cameraImageProperties.width, cameraImageProperties.height, BufferFormat.YV12)
 
-        predictFace()
-        predictPose()
+        predictFace(inputBuffer)
+        predictPose(inputBuffer)
 
         Log.d("HYUNSOO", "$faceDetection, $faceLandmarks, $poseDetection, $poseLandmarks")
         return Holistic(faceDetection, faceLandmarks, poseDetection, poseLandmarks)
     }
 
-    private fun predictFace(){
+    fun predictFace(inputBuffer: Buffer): HolisticFace {
         /* FACE PIPELINE */
         imageProcessor.process(inputBuffer, faceDetectorInputTensors[0])
 
@@ -241,14 +248,18 @@ class HolisticHelper(assetManager: AssetManager) {
             )
             faceLandmarks = faceHelper.landmarksPredict(
                 faceLandmarksInputTensors,
-                faceLandmarksOutputTensors
+                faceLandmarksOutputTensors,
+                faceDetectorInputSize
             )
             Log.d("HYUNSOO", faceLandmarks.toString())
         }
-
+        return HolisticFace(
+            faceDetection,
+            faceLandmarks
+        )
     }
 
-    private fun predictPose(){
+    fun predictPose(inputBuffer: Buffer): HolisticPose {
         // POSE PIPELINE
         poseDetectorImageProcessor.process(inputBuffer, poseDetectorInputTensors[0])
 
@@ -256,8 +267,11 @@ class HolisticHelper(assetManager: AssetManager) {
         var posePredictions =
             poseHelper.detectorPredict(poseDetectorInputTensors, poseDetectorOutputTensors)
         if(posePredictions.isNotEmpty()) {
-            posePredictions.sortByDescending { it.score }
-            poseDetection = posePredictions[0]
+            poseDetection = posePredictions.maxByOrNull { it.score }
+            poseDetection!!.box.left = max((poseDetection!!.box.left - poseDetection!!.box.width()* POSE_PADDING_RATIO), 0.01f)
+            poseDetection!!.box.top = max((poseDetection!!.box.top - poseDetection!!.box.height()* POSE_PADDING_RATIO), 0.01f)
+            poseDetection!!.box.right = min((poseDetection!!.box.right + poseDetection!!.box.width()* POSE_PADDING_RATIO), 0.99f)
+            poseDetection!!.box.bottom = min((poseDetection!!.box.bottom + poseDetection!!.box.height()* POSE_PADDING_RATIO), 0.99f)
             poseCropSize = RectF(
                 poseDetection!!.box.left * cameraImageProperties.width,
                 poseDetection!!.box.top * cameraImageProperties.height,
@@ -266,12 +280,13 @@ class HolisticHelper(assetManager: AssetManager) {
             )
             poseLandmarkImageProcessor.process(inputBuffer, poseLandmarksInputTensors[0])
             poseLandmarks = poseHelper.landmarksPredict(poseLandmarksInputTensors, poseLandmarksOutputTensors)
-            for( landmark in poseLandmarks!! ){
-                landmark.x *= poseCropSize.width()
-                landmark.y *= poseCropSize.height()
-            }
-
+            Log.d("HYUNSOO", "Pose Landmarks $poseLandmarks")
         }
+
+        return HolisticPose(
+            poseDetection,
+            poseLandmarks
+        )
     }
 
     private fun makeBoxesSquare(boxes: List<HolisticFaceHelper.FaceBoxPrediction>, paddingRate: Float): List<HolisticFaceHelper.FaceBoxPrediction>{
@@ -299,12 +314,14 @@ class HolisticHelper(assetManager: AssetManager) {
     companion object {
         // Pose pipeline: SSD-MobilenetV2 + MoveNet Lightning
         // Face pipeline: RetinaFace-MobilenetV2 + FaceMesh
-        private const val POSE_DETECTOR_MODEL_PATH = "ssd_mobilenet_v2_coco_quant_postprocess.tflite"
+        private const val LABEL_PATH = "coco_ssd_mobilenet_v1_1.0_labels.txt"
+        private const val POSE_DETECTOR_MODEL_PATH = "coco_ssd_mobilenet_v1_1.0_quant.tflite"
         private const val POSE_LANDMARKS_MODEL_PATH = "lite-model_movenet_singlepose_lightning_tflite_int8_4.tflite"
         private const val FACE_DETECTOR_MODEL_PATH = "retinaface-mbv2-int8.tflite" // (1, 160, 160, 3) -> [(1, 1050, 2), (1, 1050, 4), (1, 1050, 10)]
         private const val FACE_LANDMARKS_MODEL_PATH = "face_landmark_192_full_integer_quant.tflite" // (1, 192, 192, 3) -> [(1, 1, 1, 1404), (1, 1, 1, 1)]
 
         private const val PADDING_RATIO = 0.75f
+        private const val POSE_PADDING_RATIO = 0.5f
     }
 
 }

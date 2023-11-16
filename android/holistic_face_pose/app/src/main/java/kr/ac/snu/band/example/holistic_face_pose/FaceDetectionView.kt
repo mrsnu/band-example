@@ -17,7 +17,7 @@ class FaceDetectionView(context: Context?, attrs: AttributeSet): View(context, a
     init {
         boxPaint.color = Color.BLUE
         boxPaint.style = Paint.Style.STROKE
-        boxPaint.strokeWidth = 50f
+        boxPaint.strokeWidth = 10f
     }
 
     override fun draw(canvas: Canvas) {
