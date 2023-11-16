@@ -43,7 +43,6 @@ class HolisticHelper(assetManager: AssetManager) {
     )
 
     private lateinit var faceCropSize: RectF
-    private lateinit var poseCropSize: RectF
     private var cameraImageProperties = ImageProperties(0, 0, 0, false)
     private var faceDetection: HolisticFaceHelper.FaceBoxPrediction? = null
     private var faceLandmarks: ArrayList<HolisticFaceHelper.Landmark>? = null
@@ -171,72 +170,36 @@ class HolisticHelper(assetManager: AssetManager) {
         HolisticPoseHelper(engine, poseDetectorModel, poseLandmarksModel, labels)
     }
 
-    private val imageProcessor by lazy {
+    private val faceDetectorImageProcessor by lazy {
+        val cropSize = minOf(cameraImageProperties.width, cameraImageProperties.height)
+        val cropStart = Size((cameraImageProperties.width - cropSize) / 2, (cameraImageProperties.height - cropSize) / 2)
+
         val builder = ImageProcessorBuilder()
         builder.addColorSpaceConvert(BufferFormat.RGB)
+        // center crop
+//        builder.addCrop(cropStart.width, cropStart.height, cropStart.width + cropSize - 1, cropStart.height + cropSize - 1)
         builder.addResize(faceDetectorInputSize.width, faceDetectorInputSize.height)
         builder.addRotate(-cameraImageProperties.rotationDegrees)
         builder.addDataTypeConvert()
         builder.build()
     }
-    private val landmarksImageProcessor by lazy {
-        val cropSize = minOf(faceCropSize.width(), faceCropSize.height())
-        val cropStart = Size(((faceCropSize.width() - cropSize) / 2).toInt(),
-            ((faceCropSize.height() - cropSize) / 2).toInt()
-        )
-
-        val builder = ImageProcessorBuilder()
-        builder.addColorSpaceConvert(BufferFormat.RGB)
-        builder.addCrop(cropStart.width, cropStart.height,
-            (cropStart.width + cropSize - 1).toInt(), (cropStart.height + cropSize - 1).toInt()
-        )
-        builder.addResize(faceLandmarksInputSize.width, faceLandmarksInputSize.height)
-        builder.addNormalize(0.0f, 255.0f)
-        // TODO: should I add rotate?
-        builder.addDataTypeConvert()
-        builder.build()
-
-//        val cropSize = minOf(faceCropSize.width(), faceCropSize.height())
-//        val cropStart = Size(((faceCropSize.width() - cropSize) / 2).toInt(),
-//            ((faceCropSize.height() - cropSize) / 2).toInt()
-//        )
-//
-//        val builder = ImageProcessorBuilder()
-//        builder.addColorSpaceConvert(BufferFormat.RGB)
-//        builder.addCrop(faceCropSize.left.toInt(), faceCropSize.top.toInt(),
-//            faceCropSize.right.toInt(), faceCropSize.bottom.toInt()
-//        )
-//        builder.addResize(faceLandmarksInputSize.width, faceLandmarksInputSize.height)
-//        builder.addNormalize(0.0f, 255.0f)
-//        // TODO: should I add rotate?
-//        builder.addDataTypeConvert()
-//        builder.build()
-    }
 
     private val poseDetectorImageProcessor by lazy {
+        val cropSize = minOf(cameraImageProperties.width, cameraImageProperties.height)
+        val cropStart = Size((cameraImageProperties.width - cropSize) / 2, (cameraImageProperties.height - cropSize) / 2)
+
         val builder = ImageProcessorBuilder()
         builder.addColorSpaceConvert(BufferFormat.RGB)
+        // center crop
+//        builder.addCrop(cropStart.width, cropStart.height, cropStart.width + cropSize - 1, cropStart.height + cropSize - 1)
         builder.addResize(poseDetectorInputSize.width, poseDetectorInputSize.height)
-        builder.addRotate(-cameraImageProperties.rotationDegrees)
-        builder.build()
-    }
-    private val poseLandmarkImageProcessor by lazy {
-        val builder = ImageProcessorBuilder()
-        builder.addColorSpaceConvert(BufferFormat.RGB)
-        builder.addCrop(
-            poseCropSize.left.toInt(), poseCropSize.top.toInt(),
-            poseCropSize.right.toInt(), poseCropSize.bottom.toInt()
-        )
-        builder.addResize(poseLandmarksInputSize.width, poseLandmarksInputSize.height)
         builder.addRotate(-cameraImageProperties.rotationDegrees)
         builder.build()
     }
 
     @SuppressLint("UnsafeOptInUsageError")
-    fun predict(image: ImageProxy): Holistic?{
-        if(!cameraImageProperties.isInitialized){
-            cameraImageProperties = ImageProperties(image.width, image.height, image.imageInfo.rotationDegrees, true)
-        }
+    fun predict(image: ImageProxy, rotationDegrees: Int): Holistic?{
+        cameraImageProperties = ImageProperties(image.width, image.height, rotationDegrees, true)
 
         val realImage = image.image ?: return null
         val inputBuffer = Buffer(realImage.planes, cameraImageProperties.width, cameraImageProperties.height, BufferFormat.YV12)
@@ -249,7 +212,7 @@ class HolisticHelper(assetManager: AssetManager) {
 
     private fun predictFace(inputBuffer: Buffer): HolisticFace {
         /* FACE PIPELINE */
-        imageProcessor.process(inputBuffer, faceDetectorInputTensors[0])
+        faceDetectorImageProcessor.process(inputBuffer, faceDetectorInputTensors[0])
 
         // Perform the face & pose pipeline for the current frame
         var predictions =
@@ -264,6 +227,18 @@ class HolisticHelper(assetManager: AssetManager) {
                 faceDetection!!.box.right * cameraImageProperties.width,
                 faceDetection!!.box.bottom * cameraImageProperties.height
             )
+
+            val builder = ImageProcessorBuilder()
+            builder.addColorSpaceConvert(BufferFormat.RGB)
+            builder.addCrop(faceCropSize.left.toInt(), faceCropSize.top.toInt(),
+                faceCropSize.right.toInt(), faceCropSize.bottom.toInt()
+            )
+            builder.addResize(faceLandmarksInputSize.width, faceLandmarksInputSize.height)
+            builder.addNormalize(0.0f, 255.0f)
+            builder.addRotate(-cameraImageProperties.rotationDegrees)
+            builder.addDataTypeConvert()
+            val landmarksImageProcessor = builder.build()
+
             landmarksImageProcessor.process(
                 inputBuffer,
                 faceLandmarksInputTensors[0]
@@ -287,6 +262,7 @@ class HolisticHelper(assetManager: AssetManager) {
         // Perform the face & pose pipeline for the current frame
         var posePredictions =
             poseHelper.detectorPredict(poseDetectorInputTensors, poseDetectorOutputTensors)
+        var poseCropSize: RectF
         if(posePredictions.isNotEmpty()) {
             poseDetection = posePredictions.maxByOrNull { it.score }
             poseDetection!!.box.left = max((poseDetection!!.box.left - poseDetection!!.box.width() * POSE_PADDING_RATIO), 0.01f)
@@ -299,6 +275,17 @@ class HolisticHelper(assetManager: AssetManager) {
                 poseDetection!!.box.right * cameraImageProperties.width,
                 poseDetection!!.box.bottom * cameraImageProperties.height
             )
+
+            val builder = ImageProcessorBuilder()
+            builder.addColorSpaceConvert(BufferFormat.RGB)
+            builder.addCrop(
+                poseCropSize.left.toInt(), poseCropSize.top.toInt(),
+                poseCropSize.right.toInt(), poseCropSize.bottom.toInt()
+            )
+            builder.addResize(poseLandmarksInputSize.width, poseLandmarksInputSize.height)
+            builder.addRotate(-cameraImageProperties.rotationDegrees)
+            val poseLandmarkImageProcessor = builder.build()
+
             poseLandmarkImageProcessor.process(inputBuffer, poseLandmarksInputTensors[0])
             poseLandmarks = poseHelper.landmarksPredict(poseLandmarksInputTensors, poseLandmarksOutputTensors)
         }

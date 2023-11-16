@@ -126,14 +126,16 @@ class CameraActivity : AppCompatActivity() {
 
             // Set up the view finder use case to display camera preview
             val preview = Preview.Builder()
-                .setTargetAspectRatio(AspectRatio.RATIO_4_3)
-                .setTargetRotation(activityCameraBinding.viewFinder.display.rotation)
+//                .setTargetAspectRatio(AspectRatio.RATIO_4_3)
+//                .setTargetRotation(activityCameraBinding.viewFinder.display.rotation)
+                .setTargetResolution(Size(480, 480))
                 .build()
 
             // Set up the image analysis use case which will process frames in real time
             val imageAnalysis = ImageAnalysis.Builder()
-                .setTargetAspectRatio(AspectRatio.RATIO_4_3)
-                .setTargetRotation(activityCameraBinding.viewFinder.display.rotation)
+//                .setTargetAspectRatio(AspectRatio.RATIO_4_3)
+//                .setTargetRotation(activityCameraBinding.viewFinder.display.rotation)
+                .setTargetResolution(Size(480, 480))
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
                 .build()
@@ -145,7 +147,6 @@ class CameraActivity : AppCompatActivity() {
                 if (!::bitmapBuffer.isInitialized) {
                     // The image rotation and RGB image buffer are initialized only once
                     // the analyzer has started running
-                    imageRotationDegrees = image.imageInfo.rotationDegrees
                     bitmapBuffer = Bitmap.createBitmap(
                         image.width, image.height, Bitmap.Config.ARGB_8888)
                     activityCameraBinding.faceLandmarksPrediction?.setCanvasSize(
@@ -159,7 +160,7 @@ class CameraActivity : AppCompatActivity() {
                     image.close()
                     return@Analyzer
                 }
-                val predictions = holisticHelper.predict(image)
+                val predictions = holisticHelper.predict(image, image.imageInfo.rotationDegrees)
                 image.close()
                 if (predictions != null) {
                     drawPredictions(predictions)
