@@ -83,7 +83,6 @@ class HolisticFaceHelper(private val engine: Engine, private val faceDetectorMod
         faceBoxes = filterBoxesBySize(faceBoxes)
         // NMS
         faceBoxes = nms(faceBoxes, IOU_THRESHOLD)
-        // SQUARE_BOXES
 
         return faceBoxes
     }
