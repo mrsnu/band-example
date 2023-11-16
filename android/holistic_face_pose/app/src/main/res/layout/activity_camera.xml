@@ -89,11 +89,13 @@
         app:layout_constraintVertical_bias="0.216" />
 
     <TextView
+        android:id="@+id/guideText"
         android:layout_width="296dp"
         android:layout_height="55dp"
         android:text="For best results, please make sure the target is at the center of the screen."
         android:textColor="#FFFFFF"
         android:textAlignment="center"
+        android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHorizontal_bias="0.498"

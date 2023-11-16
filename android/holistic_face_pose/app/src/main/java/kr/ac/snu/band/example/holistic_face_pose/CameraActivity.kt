@@ -193,6 +193,7 @@ class CameraActivity : AppCompatActivity() {
 
     private fun setProgressBarInvisible() = activityCameraBinding.viewFinder.post {
         activityCameraBinding.indeterminateBar?.visibility = View.GONE
+        activityCameraBinding.guideText?.visibility = View.VISIBLE
     }
 
     private fun drawPredictions(predictions: HolisticHelper.Holistic){
