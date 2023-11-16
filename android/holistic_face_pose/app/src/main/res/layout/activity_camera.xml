@@ -65,14 +65,39 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
 
+
+    <!-- Camera control buttons -->
+
     <ImageView
         android:id="@+id/imageView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_gravity="center"
-        android:scaleType="fitCenter"/>
+        android:scaleType="fitCenter"
+        tools:layout_editor_absoluteX="-108dp"
+        tools:layout_editor_absoluteY="106dp" />
 
-    <!-- Camera control buttons -->
+    <ProgressBar
+        android:id="@+id/indeterminateBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.498"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="@+id/face_box_prediction"
+        app:layout_constraintVertical_bias="0.216" />
+
+    <TextView
+        android:layout_width="296dp"
+        android:layout_height="55dp"
+        android:text="For best results, please make sure the target is at the center of the screen."
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.498"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="@+id/face_box_prediction"
+        app:layout_constraintVertical_bias="0.671" />
 
     <ImageButton
         android:id="@+id/camera_capture_button"

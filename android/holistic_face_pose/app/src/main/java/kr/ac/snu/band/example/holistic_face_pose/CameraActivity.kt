@@ -17,21 +17,15 @@
 package kr.ac.snu.band.example.holistic_face_pose
 
 import android.Manifest
-import android.R.attr.bitmap
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Matrix
-import android.graphics.RectF
-import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.util.Size
 import android.view.View
-import android.view.ViewGroup
-import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.AspectRatio
 import androidx.camera.core.CameraSelector
@@ -42,12 +36,8 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import kr.ac.snu.band.example.holistic_face_pose.databinding.ActivityCameraBinding
-import org.mrsnu.band.Buffer
-import org.mrsnu.band.BufferFormat
-import java.nio.ByteBuffer
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
-import kotlin.math.min
 import kotlin.random.Random
 
 
@@ -166,6 +156,10 @@ class CameraActivity : AppCompatActivity() {
                     drawPredictions(predictions)
                 }
 
+                if(frameCounter == 2){
+                    setProgressBarInvisible()
+                }
+
                 // Compute the FPS of the entire pipeline
                 val frameCount = 10
                 if (++frameCounter % frameCount == 0) {
@@ -189,7 +183,16 @@ class CameraActivity : AppCompatActivity() {
             // Use the camera object to link our preview use case with the view
             preview.setSurfaceProvider(activityCameraBinding.viewFinder.surfaceProvider)
 
+            // Hide progressBar when Band is initialized
+            if(frameCounter == 2){
+                activityCameraBinding.indeterminateBar?.visibility = View.GONE
+            }
+
         }, ContextCompat.getMainExecutor(this))
+    }
+
+    private fun setProgressBarInvisible() = activityCameraBinding.viewFinder.post {
+        activityCameraBinding.indeterminateBar?.visibility = View.GONE
     }
 
     private fun drawPredictions(predictions: HolisticHelper.Holistic){

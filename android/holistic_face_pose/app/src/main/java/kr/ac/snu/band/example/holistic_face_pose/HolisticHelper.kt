@@ -25,7 +25,6 @@ import kotlin.math.max
 import kotlin.math.min
 
 class HolisticHelper(assetManager: AssetManager) {
-
     data class ImageProperties (val width: Int, val height: Int, val rotationDegrees: Int, var isInitialized: Boolean)
     data class HolisticFace (
         var faceDetection: HolisticFaceHelper.FaceBoxPrediction?,
