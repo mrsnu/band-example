@@ -23,7 +23,6 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Matrix
-import android.graphics.Rect
 import android.graphics.RectF
 import android.os.Bundle
 import android.util.Log
@@ -55,6 +54,8 @@ import org.mrsnu.band.SubgraphPreparationType
 import org.mrsnu.band.Tensor
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.nio.channels.FileChannel
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -81,6 +82,7 @@ class CameraActivity : AppCompatActivity() {
     private var pauseAnalysis = false
     private var imageRotationDegrees: Int = 0
 
+    var imgCnt = 0
     var identity_vec : FloatArray? = null
 
     private val engine by lazy {
@@ -219,7 +221,6 @@ class CameraActivity : AppCompatActivity() {
     private val detImageProcessor by lazy {
         val builder = ImageProcessorBuilder()
         builder.addColorSpaceConvert(BufferFormat.RGB)
-        // center crop
         builder.addResize(detInputSize.width, detInputSize.height)
         builder.addRotate(-imageRotationDegrees)
         builder.addDataTypeConvert()
@@ -268,6 +269,38 @@ class CameraActivity : AppCompatActivity() {
         }
 
         super.onDestroy()
+    }
+
+
+    fun saveBitmap(bitmap: Bitmap, filename: String) {
+        val file = File(applicationInfo.dataDir + "/img/" + filename)
+        try{
+            val out = FileOutputStream(file)
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
+            out.close()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun tensor2bitmap(tensor: Tensor, width: Int, height: Int) : Bitmap {
+        val colorArr = IntArray(width * height * 3)
+        var byteBuffer = tensor.data.order(ByteOrder.nativeOrder()).rewind()
+        byteBuffer = (byteBuffer as ByteBuffer).asFloatBuffer()
+
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val index = y * width + x
+                val r = byteBuffer[index * 3 + 0].toInt()
+                val g = byteBuffer[index * 3 + 1].toInt()
+                val b = byteBuffer[index * 3 + 2].toInt()
+                colorArr[index] = Color.argb(255, r, g, b)
+                //Log.d("XXX", "index: $index | rgb: $r,$g,$b")
+            }
+        }
+
+
+        return Bitmap.createBitmap(colorArr, width, height, Bitmap.Config.ARGB_8888)
     }
 
     /** Declare and bind preview and analysis use cases */
@@ -319,6 +352,13 @@ class CameraActivity : AppCompatActivity() {
                 // Process the image in Tensorflow
                 detImageProcessor.process(inputBuffer, detInputTensors[0])
                 image.close()
+
+                // save image to /data/data/{packagename}/img/
+                val filename = "det_${imgCnt}.jpg"
+                imgCnt += 1
+                val bitmap = tensor2bitmap(detInputTensors[0], detInputSize.width, detInputSize.height)
+                saveBitmap(bitmap, filename)
+
                 // Perform the object detection for the current frame
                 val predictions = faceDet.predict(detInputTensors, detOutputTensors)
 
@@ -359,33 +399,12 @@ class CameraActivity : AppCompatActivity() {
                     recImageProcessor.close()
                     recModels.add(recModel)
 
-
-                    // create int array of height * width * 3
-                    val colorArr = IntArray(recInputSize.width * recInputSize.height * 3)
-                    for (y in 0 until recInputSize.height) {
-                        for (x in 0 until recInputSize.width) {
-                            val index = y * recInputSize.width + x
-                            val r = recInputTensors[i][0].data[index * 3 * Float.SIZE_BYTES+ 0 * Float.SIZE_BYTES].toInt()
-                            val g = recInputTensors[i][0].data[index * 3 * Float.SIZE_BYTES+ 1 * Float.SIZE_BYTES].toInt()
-                            val b = recInputTensors[i][0].data[index * 3 * Float.SIZE_BYTES+ 2 * Float.SIZE_BYTES].toInt()
-                            colorArr[index] = Color.argb(255, r, g, b)
-                        }
-                    }
-                    val bitmap = Bitmap.createBitmap(colorArr, recInputSize.width, recInputSize.height, Bitmap.Config.ARGB_8888)
-
-                    // current time in milliseconds
-                    val time = System.currentTimeMillis()
-
-                    // time to string
-                    val timeStr = time.toString()
-
-                    // save bitmap to file
-                    val file = File("/data/local/tmp/face_${timeStr}.jpg")
-                    val out = FileOutputStream(file)
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
-                    out.close()
-
-
+                    /*
+                    val filename2 = "rec_${imgCnt}.png"
+                    imgCnt += 1
+                    val bitmap2 = tensor2bitmap(recInputTensors[i][0], recInputSize.width, recInputSize.height)
+                    saveBitmap(bitmap2, filename2)
+                    */
 
                     val identities = faceRec.predict(recModels, recInputTensors, recOutputTensors)
 
@@ -405,11 +424,7 @@ class CameraActivity : AppCompatActivity() {
                         }
                          */
                     }
-
-
-
                 }
-
 
 
                 // Compute the FPS of the entire pipeline
@@ -460,7 +475,6 @@ class CameraActivity : AppCompatActivity() {
             width = min(activityCameraBinding.viewFinder.width, location.right.toInt() - location.left.toInt())
             height = min(activityCameraBinding.viewFinder.height, location.bottom.toInt() - location.top.toInt())
         }
-
 
         // Make sure all UI elements are visible
         activityCameraBinding.boxPrediction.visibility = View.VISIBLE
