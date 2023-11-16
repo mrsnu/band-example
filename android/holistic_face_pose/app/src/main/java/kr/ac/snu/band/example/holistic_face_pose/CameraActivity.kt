@@ -205,96 +205,11 @@ class CameraActivity : AppCompatActivity() {
         activityCameraBinding.poseLandmarksPrediction?.invalidate()
     }
 
-    private fun reportPrediction2(faceBoxPrediction: HolisticFaceHelper.FaceBoxPrediction?) {
-        if (faceBoxPrediction != null)
-            activityCameraBinding.faceBoxPrediction?.setRect(faceBoxPrediction.box)
-        activityCameraBinding.faceBoxPrediction?.invalidate()
-    }
-
-    private fun faceReportLandmarks(landmarks: ArrayList<HolisticFaceHelper.Landmark>, boxCrop: RectF) {
-        activityCameraBinding.faceLandmarksPrediction?.setLandmarks(landmarks, boxCrop)
-        activityCameraBinding.faceLandmarksPrediction?.invalidate()
-    }
-
-    private fun poseReportLandmarks(landmarks: ArrayList<HolisticFaceHelper.Landmark>, boxCrop: RectF) {
-        activityCameraBinding.poseLandmarksPrediction?.setLandmarks(landmarks, boxCrop)
-        activityCameraBinding.poseLandmarksPrediction?.invalidate()
-    }
-
-    private fun reportPrediction(
-        prediction: HolisticFaceHelper.FaceBoxPrediction?
-    ) = activityCameraBinding.viewFinder.post {
-
-        // Early exit: if prediction is not good enough, don't report it
-        if (prediction == null || prediction.score < ACCURACY_THRESHOLD) {
-            activityCameraBinding.boxPrediction.visibility = View.GONE
-//            activityCameraBinding.textPrediction.visibility = View.GONE
-            return@post
-        }
-
-        // Location has to be mapped to our local coordinates
-        val location = mapOutputCoordinates(prediction.box)
-
-        // Update the text and UI
-//        activityCameraBinding.textPrediction.text = "${"%.2f".format(prediction.score)} ${prediction.label}"
-        (activityCameraBinding.boxPrediction.layoutParams as ViewGroup.MarginLayoutParams).apply {
-            topMargin = location.top.toInt()
-            leftMargin = location.left.toInt()
-            width = min(activityCameraBinding.viewFinder.width, location.right.toInt() - location.left.toInt())
-            height = min(activityCameraBinding.viewFinder.height, location.bottom.toInt() - location.top.toInt())
-        }
-
-        // Make sure all UI elements are visible
-        activityCameraBinding.boxPrediction.visibility = View.VISIBLE
-//        activityCameraBinding.textPrediction.visibility = View.VISIBLE
-    }
-
     /**
      * Helper function used to map the coordinates for objects coming out of
      * the model into the coordinates that the user sees on the screen.
      */
-    private fun mapOutputCoordinates(location: RectF): RectF {
-        // Step 1: map location to the preview coordinates
-        val previewLocation = RectF(
-            location.left * activityCameraBinding.viewFinder.width,
-            location.top * activityCameraBinding.viewFinder.height,
-            location.right * activityCameraBinding.viewFinder.width,
-            location.bottom * activityCameraBinding.viewFinder.height
-        )
 
-        // Step 2: compensate for camera sensor orientation and mirroring
-        val isFrontFacing = lensFacing == CameraSelector.LENS_FACING_FRONT
-        val correctedLocation = if (isFrontFacing) {
-            RectF(
-                activityCameraBinding.viewFinder.width - previewLocation.right,
-                previewLocation.top,
-                activityCameraBinding.viewFinder.width - previewLocation.left,
-                previewLocation.bottom)
-        } else {
-            previewLocation
-        }
-
-        // Step 3: compensate for 1:1 to 4:3 aspect ratio conversion + small margin
-        val margin = 0.1f
-        val requestedRatio = 4f / 3f
-        val midX = (correctedLocation.left + correctedLocation.right) / 2f
-        val midY = (correctedLocation.top + correctedLocation.bottom) / 2f
-        return if (activityCameraBinding.viewFinder.width < activityCameraBinding.viewFinder.height) {
-            RectF(
-                midX - (1f + margin) * requestedRatio * correctedLocation.width() / 2f,
-                midY - (1f - margin) * correctedLocation.height() / 2f,
-                midX + (1f + margin) * requestedRatio * correctedLocation.width() / 2f,
-                midY + (1f - margin) * correctedLocation.height() / 2f
-            )
-        } else {
-            RectF(
-                midX - (1f - margin) * correctedLocation.width() / 2f,
-                midY - (1f + margin) * requestedRatio * correctedLocation.height() / 2f,
-                midX + (1f - margin) * correctedLocation.width() / 2f,
-                midY + (1f + margin) * requestedRatio * correctedLocation.height() / 2f
-            )
-        }
-    }
 
     override fun onResume() {
         super.onResume()
@@ -328,7 +243,5 @@ class CameraActivity : AppCompatActivity() {
 
     companion object {
         private val TAG = CameraActivity::class.java.simpleName
-
-        private const val ACCURACY_THRESHOLD = 0.2f
     }
 }
