@@ -37,7 +37,6 @@ class FaceRecognitionHelper(private val engine: Engine) {
         //val requests = engine.requestAsyncBatch(models, inputTensor)
         //engine.wait(requests[i], outputTensor[i])
 
-
         engine.requestSync(models[i], inputTensor[i], outputTensor[i])
         val outBuffer = outputTensor[i][0].data.order(ByteOrder.nativeOrder())
         val identity = FloatArray(OUTPUT_SHAPE[1])

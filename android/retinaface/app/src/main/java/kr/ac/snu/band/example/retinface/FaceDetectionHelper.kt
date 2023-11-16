@@ -17,6 +17,7 @@
 package kr.ac.snu.band.example.retinface
 
 import android.graphics.RectF
+import android.util.Log
 
 import org.mrsnu.band.Engine
 import org.mrsnu.band.Model
@@ -34,27 +35,28 @@ class FaceDetectionHelper(private val engine: Engine, private val model: Model) 
     fun predict(inputTensor: List<Tensor>, outputTensor: List<Tensor>): List<BoundingBox> {
         engine.requestSync(model, inputTensor, outputTensor)
 
-        var rawResults = outputTensor[0].data.order(ByteOrder.nativeOrder()).rewind()
-        rawResults = (rawResults as ByteBuffer).asFloatBuffer()
+        val rawResults = outputTensor[0].data.order(ByteOrder.nativeOrder()).rewind()
+        val floatResults = (rawResults as ByteBuffer).asFloatBuffer()
 
         val boxes = ArrayList<BoundingBox>()
 
         for (i in 0 until OUTPUT_SHAPE[0]) {
             val offset = i * OUTPUT_SHAPE[1]
-            val confidence = rawResults[offset + OUTPUT_SHAPE[1] - 1]
+            val confidence = floatResults[offset + OUTPUT_SHAPE[1] - 1]
             if (confidence > SCORE_THRESHOLD) {
                 boxes.add(BoundingBox(
                     RectF(
-                        rawResults[offset + 0],
-                        rawResults[offset + 1],
-                        rawResults[offset + 2],
-                        rawResults[offset + 3]
+                        floatResults[offset + 0],
+                        floatResults[offset + 1],
+                        floatResults[offset + 2],
+                        floatResults[offset + 3]
                     ),
                     confidence
                 ))
             }
 
         }
+
         return nms(boxes)
 
     }
@@ -64,16 +66,16 @@ class FaceDetectionHelper(private val engine: Engine, private val model: Model) 
             return intersection(other) / union(other)
         }
 
-        private fun intersection (other: BoundingBox) : Float {
-            if (location.left < other.location.left || location.right > other.location.right ||
-                location.top < other.location.top || location.bottom > other.location.bottom) {
+        fun intersection (other: BoundingBox) : Float {
+            if (location.right < other.location.left || location.left > other.location.right ||
+                location.bottom < other.location.top || location.top > other.location.bottom) {
                 return 0f
             }
             return (min(location.right, other.location.right) - max(location.left, other.location.left)) *
                     (min(location.bottom, other.location.bottom) - max(location.top, other.location.top))
         }
 
-        private fun union (other: BoundingBox) : Float {
+        fun union (other: BoundingBox) : Float {
             val intersection: Float = intersection(other)
             val area1 = (location.right - location.left) * (location.bottom - location.top)
             val area2 =
@@ -99,13 +101,14 @@ class FaceDetectionHelper(private val engine: Engine, private val model: Model) 
                     prevBoxes.add(detection)
             }
         }
+
         return nmsBoxes
     }
 
 
     companion object {
         val OUTPUT_SHAPE : List<Int> = listOf(16800, 16)
-        const val SCORE_THRESHOLD : Float = 0.75f
-        const val IOU_THRESHOLD : Float = 0.3f
+        const val SCORE_THRESHOLD : Float = 0.7f
+        const val IOU_THRESHOLD : Float = 0.2f
     }
 }
