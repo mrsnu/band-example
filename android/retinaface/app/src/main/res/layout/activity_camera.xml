@@ -36,12 +36,11 @@
         android:scaleType="centerCrop"
         android:visibility="gone" />
 
-    <!--
     <TextView
-        android:id="@+id/text_prediction"
+        android:id="@+id/text_fps"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="50dp"
+        android:layout_marginBottom="30dp"
         android:text="@string/unknown"
         android:textAllCaps="true"
         android:textAppearance="@style/TextAppearance.AppCompat.Display1"
@@ -49,7 +48,14 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         />
-        -->
+
+    <View
+        android:id="@+id/box_prediction0"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="@drawable/shape_rectangle_red"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
 
     <View
         android:id="@+id/box_prediction1"
@@ -93,13 +99,12 @@
 
     <ImageView
         android:id="@+id/image_view"
-        android:layout_width="224px"
-        android:layout_height="224px"
-        android:layout_marginBottom="50dp"
-        app:layout_constraintBottom_toTopOf="@+id/camera_capture_button"
+        android:layout_width="100dp"
+        android:layout_height="100dp"
+        android:layout_marginBottom="30dp"
+        app:layout_constraintBottom_toTopOf="@+id/text_fps"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"/>
-
 
 
     <!-- Camera control buttons -->

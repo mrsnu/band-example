@@ -22,7 +22,6 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
-import android.graphics.Matrix
 import android.graphics.RectF
 import android.os.Bundle
 import android.util.Log
@@ -71,22 +70,18 @@ class CameraActivity : AppCompatActivity() {
     private lateinit var activityCameraBinding: ActivityCameraBinding
 
     private lateinit var bitmapBuffer: Bitmap
-    private lateinit var inputBuffer : Buffer
 
     private val executor = Executors.newSingleThreadExecutor()
     private val permissions = listOf(Manifest.permission.CAMERA)
     private val permissionsRequestCode = Random.nextInt(0, 10000)
 
     private var lensFacing: Int = CameraSelector.LENS_FACING_BACK
-    private val isFrontFacing get() = lensFacing == CameraSelector.LENS_FACING_FRONT
 
-    private var setTargetIdentity = false
+    private var setCurrFaceAsTarget = false
     private var imageRotationDegrees: Int = 0
 
-    var detCnt = 0
-    var recCnt = 0
-    var identity_vec : FloatArray? = null
-    var identity_bm : Bitmap? = null
+    private var identityVec : FloatArray? = null
+    private var identityBm : Bitmap? = null
 
     private val engine by lazy {
         Band.init()
@@ -94,15 +89,15 @@ class CameraActivity : AppCompatActivity() {
 
         val builder = ConfigBuilder()
         builder.addPlannerLogPath("/data/local/tmp/log.json")
-        builder.addSchedulers(arrayOf<SchedulerType>(SchedulerType.HETEROGENEOUS_EARLIEST_FINISH_TIME))
+        builder.addSchedulers(arrayOf(SchedulerType.HETEROGENEOUS_EARLIEST_FINISH_TIME))
         builder.addMinimumSubgraphSize(7)
         builder.addSubgraphPreparationType(SubgraphPreparationType.MERGE_UNIT_SUBGRAPH)
         builder.addCPUMask(CpuMaskFlag.ALL)
         builder.addPlannerCPUMask(CpuMaskFlag.PRIMARY)
-        builder.addWorkers(arrayOf<Device>(Device.CPU, Device.GPU, Device.DSP, Device.NPU))
+        builder.addWorkers(arrayOf(Device.CPU, Device.GPU, Device.DSP, Device.NPU))
         builder.addWorkerNumThreads(intArrayOf(1, 1, 1, 1))
         builder.addWorkerCPUMasks(
-           arrayOf<CpuMaskFlag>(
+           arrayOf(
                CpuMaskFlag.ALL, CpuMaskFlag.ALL,
                CpuMaskFlag.ALL, CpuMaskFlag.ALL
            ))
@@ -117,6 +112,8 @@ class CameraActivity : AppCompatActivity() {
         Engine(builder.build())
     }
 
+
+    /** Models */
     private val detModel by lazy {
         // Load mapped byte buffer from asset
         val fileDescriptor = assets.openFd(DET_MODEL_PATH)
@@ -128,7 +125,6 @@ class CameraActivity : AppCompatActivity() {
         engine.registerModel(model)
         model
     }
-
     private val recModel by lazy {
         // Load mapped byte buffer from asset
         val fileDescriptor = assets.openFd(REC_MODEL_PATH)
@@ -141,56 +137,52 @@ class CameraActivity : AppCompatActivity() {
         model
     }
 
+    /** Input/Output Tensors */
     private val detInputTensors by lazy {
         List<Tensor>(engine.getNumInputTensors(detModel)) { engine.createInputTensor(detModel, it) }
     }
-
     private val detOutputTensors by lazy {
         List<Tensor>(engine.getNumOutputTensors(detModel)) { engine.createOutputTensor(detModel, it) }
     }
-
     private val recInputTensors by lazy {
         List(MAX_NUM_FACES) {
             List<Tensor>(engine.getNumInputTensors(recModel)) { engine.createInputTensor(recModel, it) }
         }
     }
-
     private val recOutputTensors by lazy {
         List(MAX_NUM_FACES) {
             List<Tensor>(engine.getNumOutputTensors(recModel)) { engine.createOutputTensor(recModel, it) }
         }
     }
 
+    /** Input Size */
     private val detInputSize by lazy {
         Size(detInputTensors[0].dims[2], detInputTensors[0].dims[1]) // Order of axis is: {1, height, width, 3}
     }
-
     private val recInputSize by lazy {
         Size(recInputTensors[0][0].dims[2], recInputTensors[0][0].dims[1]) // Order of axis is: {1, height, width, 3}
     }
 
+    /** Helper classes */
     private val faceDet by lazy {
         FaceDetectionHelper(engine, detModel)
     }
-
     private val faceRec by lazy {
         FaceRecognitionHelper(engine)
     }
 
-    /*
-    private val imageProcessor by lazy {
-        val cropSize = minOf(bitmapBuffer.width, bitmapBuffer.height)
-        val cropStart = Size((bitmapBuffer.width - cropSize) / 2, (bitmapBuffer.height - cropSize) / 2)
-        val builder = ImageProcessorBuilder()
-        builder.addColorSpaceConvert(BufferFormat.RGB)
-        // center crop
-        builder.addCrop(cropStart.width, cropStart.height, cropStart.width + cropSize - 1, cropStart.height + cropSize - 1)
-        builder.addResize(inputSize.width, inputSize.height)
-        builder.addRotate(-imageRotationDegrees)
-        builder.build()
+    /** UI elements */
+    private val boxPredictions by lazy{
+        listOf(
+            activityCameraBinding.boxPrediction1,
+            activityCameraBinding.boxPrediction2,
+            activityCameraBinding.boxPrediction3,
+            activityCameraBinding.boxPrediction4,
+            activityCameraBinding.boxPrediction5,
+        )
     }
-     */
 
+    /** Preprocessor */
     private val detImageProcessor by lazy {
         val cropSize = minOf(bitmapBuffer.width, bitmapBuffer.height)
         val cropStart = Size((bitmapBuffer.width - cropSize) / 2, (bitmapBuffer.height - cropSize) / 2)
@@ -203,89 +195,44 @@ class CameraActivity : AppCompatActivity() {
         builder.build()
     }
 
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         activityCameraBinding = ActivityCameraBinding.inflate(layoutInflater)
         setContentView(activityCameraBinding.root)
 
         activityCameraBinding.cameraCaptureButton.setOnClickListener {
-
-            setTargetIdentity = true
-
-            /*
-            // Disable all camera controls
-            it.isEnabled = false
-
-            if (setTargetIdentity) {
-                // If image analysis is in paused state, resume it
-                setTargetIdentity =
-                activityCameraBinding.imagePredicted.visibility = View.GONE
-
-            } else {
-                // Otherwise, pause image analysis and freeze image
-                setTargetIdentity = true
-                val matrix = Matrix().apply {
-                    postRotate(imageRotationDegrees.toFloat())
-                    if (isFrontFacing) postScale(-1f, 1f)
-                }
-                val uprightImage = Bitmap.createBitmap(
-                    bitmapBuffer, 0, 0, bitmapBuffer.width, bitmapBuffer.height, matrix, true)
-                activityCameraBinding.imagePredicted.setImageBitmap(uprightImage)
-                activityCameraBinding.imagePredicted.visibility = View.VISIBLE
+            if (!setCurrFaceAsTarget) {
+                // Will be set to false after the next frame's highest confidence face is set as target
+                setCurrFaceAsTarget = true
             }
+        }
+    }
 
-            // Re-enable camera controls
-            it.isEnabled = true
-             */
+    override fun onResume() {
+        super.onResume()
+
+        // Request permissions each time the app resumes, since they can be revoked at any time
+        if (!hasPermissions(this)) {
+            ActivityCompat.requestPermissions(
+                this, permissions.toTypedArray(), permissionsRequestCode)
+        } else {
+            bindCameraUseCases()
         }
     }
 
     override fun onDestroy() {
-
         // Terminate all outstanding analyzing jobs (if there is any).
         executor.apply {
             shutdown()
             awaitTermination(1000, TimeUnit.MILLISECONDS)
         }
-
         super.onDestroy()
-    }
-
-
-    fun saveBitmap(bitmap: Bitmap, filename: String) {
-        val file = File(applicationInfo.dataDir + "/img/" + filename)
-        try{
-            val out = FileOutputStream(file)
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
-            out.close()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    fun tensor2bitmap(tensor: Tensor, width: Int, height: Int, scale: Float) : Bitmap {
-        val colorArr = IntArray(width * height * 3)
-        val rawBuffer = tensor.data.order(ByteOrder.nativeOrder()).rewind()
-        val floatBuffer = (rawBuffer as ByteBuffer).asFloatBuffer()
-
-        for (y in 0 until height) {
-            for (x in 0 until width) {
-                val index = y * width + x
-                val r = (floatBuffer[index * 3 + 0]*scale).toInt()
-                val g = (floatBuffer[index * 3 + 1]*scale).toInt()
-                val b = (floatBuffer[index * 3 + 2]*scale).toInt()
-                colorArr[index] = Color.argb(255, r, g, b)
-                //Log.d("XXX", "index: $index | rgb: $r,$g,$b")
-            }
-        }
-
-        return Bitmap.createBitmap(colorArr, width, height, Bitmap.Config.ARGB_8888)
     }
 
     /** Declare and bind preview and analysis use cases */
     @SuppressLint("UnsafeExperimentalUsageError", "UnsafeOptInUsageError")
     private fun bindCameraUseCases() = activityCameraBinding.viewFinder.post {
-
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
         cameraProviderFuture.addListener ({
 
@@ -318,136 +265,36 @@ class CameraActivity : AppCompatActivity() {
                         image.width, image.height, Bitmap.Config.ARGB_8888)
                 }
 
-                // Early exit: image analysis is in paused state
-                if (setTargetIdentity) {
-                    image.close()
-                    return@Analyzer
-                }
-
                 // get non-null image
                 val realImage = image.image ?: return@Analyzer
-                inputBuffer = Buffer(realImage.planes, image.width, image.height, BufferFormat.NV21)
-
-                // Process the image in Tensorflow
-                detImageProcessor.process(inputBuffer, detInputTensors[0])
+                val inputBuffer = Buffer(realImage.planes, image.width, image.height, BufferFormat.NV21)
                 image.close()
 
-                // save image to /data/data/{packagename}/img/
-                /*
-                val filename = "det_${detCnt}.jpg"
-                detCnt += 1
-                val bitmap = tensor2bitmap(detInputTensors[0], detInputSize.width, detInputSize.height)
-                saveBitmap(bitmap, filename)
+                // Perform face detection on the input image
+                // and take predictions with highest confidence
+                val detPredictions = detectFace(inputBuffer).sortedByDescending { it.confidence }.take(MAX_NUM_FACES)
 
-                 */
+                // If there is at least one face detected, perform face recognition
+                if (detPredictions.isNotEmpty()) {
+                    val identities = recognizeFaces(inputBuffer, detPredictions, image.width, image.height)
 
-                // Perform the object detection for the current frame
-                val predictions = faceDet.predict(detInputTensors, detOutputTensors)
-
-                Log.d(TAG, "predictions: $predictions")
-
-                // Report only the top prediction
-                /*
-                val bestPrediction = predictions.maxByOrNull { it.confidence }
-                reportPrediction(bestPrediction)
-                 */
-
-                // Report top5 predictions
-                val top5Predictions = predictions.sortedByDescending { it.confidence }.take(MAX_NUM_FACES)
-                reportPredictions(top5Predictions)
-
-                val recModels = ArrayList<Model>()
-
-                if (top5Predictions.isNotEmpty()) {
-
-                    //top5Predictions.forEachIndexed{index, prediction ->
-
-                    val index = 0
-                    val prediction = top5Predictions[index]
-
-
-                    val builder = ImageProcessorBuilder()
-                    builder.addColorSpaceConvert(BufferFormat.RGB)
-                    builder.addRotate(-imageRotationDegrees)
-
-                    val cropSize = minOf(bitmapBuffer.width, bitmapBuffer.height)
-                    val cropStart = Size((bitmapBuffer.width - cropSize) / 2, (bitmapBuffer.height - cropSize) / 2)
-                    //builder.addCrop(cropStart.width, cropStart.height, cropStart.width + cropSize - 1, cropStart.height + cropSize - 1)
-
-                    val bboxRect = RectF(
-                        prediction.location.left * cropSize,
-                        prediction.location.top * cropSize,
-                        prediction.location.right * cropSize,
-                        prediction.location.bottom * cropSize
-                    )
-
-                    // log prediction's location
-                    //Log.d("XXX", "prediction: ${prediction.location.left}, ${prediction.location.top}, ${prediction.location.right}, ${prediction.location.bottom}")
-
-                    bboxRect.left = max(bboxRect.left, 0f)
-                    bboxRect.top = max(bboxRect.top, 0f)
-                    bboxRect.right = min(bboxRect.right, image.width.toFloat())
-                    bboxRect.bottom = min(bboxRect.bottom, image.height.toFloat())
-
-                    builder.addCrop(
-                        cropStart.height + bboxRect.left.toInt(),
-                        cropStart.width + bboxRect.top.toInt(),
-                        cropStart.height  + bboxRect.right.toInt(),
-                        cropStart.width + bboxRect.bottom.toInt()
-                    )
-
-                    builder.addResize(recInputSize.width, recInputSize.height)
-                    //builder.addDataTypeConvert()
-                    builder.addNormalize(0f, 255f)
-                    val recImageProcessor = builder.build()
-
-                    // TODO: support multiple faces.
-
-                    recImageProcessor.process(inputBuffer, recInputTensors[index][0])
-                    recImageProcessor.close()
-                    recModels.add(recModel)
-
-                    // print few values in recInputTensors[i][0]
-
-                    /*
-                    val filename2 = "rec_${recCnt}.jpeg"
-                    recCnt += 1
-                    val bitmap2 = tensor2bitmap(recInputTensors[index][0], recInputSize.width, recInputSize.height)
-                    saveBitmap(bitmap2, filename2)
-                     */
-                    val identities = faceRec.predict(recModels, recInputTensors, recOutputTensors)
-
-                    if (setTargetIdentity) {
-                        setTargetIdentity = false
-                        identity_vec = identities[0]
-                        identity_bm = tensor2bitmap(recInputTensors[index][0], recInputSize.width, recInputSize.height, 255f)
-
-                        val filename2 = "identity.jpeg"
-                        saveBitmap(tensor2bitmap(recInputTensors[index][0], recInputSize.width, recInputSize.height, 255f), filename2)
-
-                        //
-                        runOnUiThread(Runnable {
-                            activityCameraBinding.imageView?.setImageBitmap(identity_bm)
-                            activityCameraBinding.imageView?.visibility = View.VISIBLE
-                            activityCameraBinding.imageView?.bringToFront()
-                        })
-                    } else if (identity_vec != null) {
-                        var similarity: Float = (faceRec.dotProduct(identities[0], identity_vec!!) / (faceRec.norm(identities[0]) * faceRec.norm(identity_vec!!)) + 1f) / 2f
-                        similarity = min(max(similarity, 0f), 1f)
-
-                        Log.d("XXX", "similarity: $similarity")
-
-                        /*
-                        if (similarity > SIM_THRESHOLD) {
-                            Log.d("XXX", "same!")
-                        } else {
-                            Log.d("XXX", "different!")
+                    var maxSimilarityIndex = -1
+                    if (setCurrFaceAsTarget) {
+                        setTargetFace(identities[0])
+                    } else if (identityVec != null) {
+                        // Find the face with highest similarity to the target
+                        var maxSimilarity = 0f
+                        identities.forEachIndexed{idIndex, identity ->
+                            val similarity = faceRec.similarity(identity, identityVec!!)
+                            if (similarity > maxSimilarity && similarity > SIM_THRESHOLD) {
+                                maxSimilarity = similarity
+                                maxSimilarityIndex = idIndex
+                            }
                         }
-                         */
                     }
-                    //}
+                    // Draw the bounding boxes and emphasize the face with highest similarity
+                    reportPredictions(detPredictions, maxSimilarityIndex)
                 }
-
 
                 // Compute the FPS of the entire pipeline
                 val frameCount = 10
@@ -457,6 +304,14 @@ class CameraActivity : AppCompatActivity() {
                     val delta = now - lastFpsTimestamp
                     val fps = 1000 * frameCount.toFloat() / delta
                     Log.d(TAG, "FPS: ${"%.02f".format(fps)} with tensorSize: ${image.width} x ${image.height}")
+
+                    // Display it on the screen
+                    runOnUiThread {
+                        activityCameraBinding.textFps.text = "FPS: %.2f".format(fps)
+                        activityCameraBinding.textFps.visibility = View.VISIBLE
+                        activityCameraBinding.textFps.bringToFront()
+                    }
+
                     lastFpsTimestamp = now
                 }
             })
@@ -475,138 +330,134 @@ class CameraActivity : AppCompatActivity() {
         }, ContextCompat.getMainExecutor(this))
     }
 
-    private fun reportPredictions(
-        predictions: List<FaceDetectionHelper.BoundingBox>
-    ) = activityCameraBinding.viewFinder.post {
+    private fun detectFace(inputBuffer: Buffer) : List<FaceDetectionHelper.BoundingBox> {
+        // Preprocess the image for detection
+        detImageProcessor.process(inputBuffer, detInputTensors[0])
 
-        if (predictions.isEmpty()) {
-            return@post
+        // Perform the object detection for the current frame
+        return faceDet.predict(detInputTensors, detOutputTensors)
+    }
+
+    private fun recognizeFaces(inputBuffer: Buffer, predictions: List<FaceDetectionHelper.BoundingBox>, imgWidth: Int, imgHeight: Int) : List<FloatArray> {
+        val recModels = ArrayList<Model>()
+
+        // Crop same region as detection, and use it as offset for bbox
+        val cropSize = minOf(bitmapBuffer.width, bitmapBuffer.height)
+        val cropStart = Size((bitmapBuffer.width - cropSize) / 2, (bitmapBuffer.height - cropSize) / 2)
+
+        predictions.forEachIndexed { index, prediction ->
+
+            // Preprocess the image for recognition
+            val builder = ImageProcessorBuilder()
+            builder.addColorSpaceConvert(BufferFormat.RGB)
+            builder.addRotate(-imageRotationDegrees)
+            val bboxRect = RectF(
+                prediction.location.left * cropSize,
+                prediction.location.top * cropSize,
+                prediction.location.right * cropSize,
+                prediction.location.bottom * cropSize
+            )
+            bboxRect.left = max(bboxRect.left, 0f)
+            bboxRect.top = max(bboxRect.top, 0f)
+            bboxRect.right = min(bboxRect.right, imgWidth.toFloat())
+            bboxRect.bottom = min(bboxRect.bottom, imgHeight.toFloat())
+            builder.addCrop(
+                cropStart.height + bboxRect.left.toInt(),
+                cropStart.width + bboxRect.top.toInt(),
+                cropStart.height + bboxRect.right.toInt(),
+                cropStart.width + bboxRect.bottom.toInt()
+            )
+            builder.addResize(recInputSize.width, recInputSize.height)
+            builder.addNormalize(
+                0f,
+                255f
+            )  // addDataTypeConvert() is not required when using addNormalize()
+            val recImageProcessor = builder.build()
+
+            // Preprocess the image for recognition
+            recImageProcessor.process(inputBuffer, recInputTensors[index][0])
+            recImageProcessor.close()
+
+            recModels.add(recModel)
         }
 
-        val boxPredictions = listOf(
-            activityCameraBinding.boxPrediction1,
-            activityCameraBinding.boxPrediction2,
-            activityCameraBinding.boxPrediction3,
-            activityCameraBinding.boxPrediction4,
-            activityCameraBinding.boxPrediction5,
-        )
+        // Perform the face recognition for the current frame's faces
+        return faceRec.predict(recModels, recInputTensors, recOutputTensors)
+    }
 
+    private fun setTargetFace(identity: FloatArray) {
+        // Set the face with highest confidence as target
+        identityVec = identity
+        identityBm = tensor2bitmap(recInputTensors[0][0], recInputSize.width, recInputSize.height, 255f)
+
+        // Draw the target face on the screen
+        runOnUiThread {
+            activityCameraBinding.imageView?.setImageBitmap(identityBm)
+            activityCameraBinding.imageView?.visibility = View.VISIBLE
+            activityCameraBinding.imageView?.bringToFront()
+        }
+        setCurrFaceAsTarget = false
+    }
+
+    private fun tensor2bitmap(tensor: Tensor, width: Int, height: Int, scale: Float) : Bitmap {
+        // 1f for int8, 255f for float32
+        val colorArr = IntArray(width * height * 3)
+        val rawBuffer = tensor.data.order(ByteOrder.nativeOrder()).rewind()
+        val floatBuffer = (rawBuffer as ByteBuffer).asFloatBuffer()
+
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val index = y * width + x
+                val r = (floatBuffer[index * 3 + 0]*scale).toInt()
+                val g = (floatBuffer[index * 3 + 1]*scale).toInt()
+                val b = (floatBuffer[index * 3 + 2]*scale).toInt()
+                colorArr[index] = Color.argb(255, r, g, b)
+            }
+        }
+        return Bitmap.createBitmap(colorArr, width, height, Bitmap.Config.ARGB_8888)
+    }
+
+    private fun reportPredictions(
+        predictions: List<FaceDetectionHelper.BoundingBox>, maxSimilarityIndex : Int
+    ) = activityCameraBinding.viewFinder.post {
+        // TODO : Dynamic box drawing
+
+        // Hide all the bounding boxes by default
         for (boxPrediction in boxPredictions) {
             boxPrediction?.visibility = View.GONE
         }
+        activityCameraBinding.boxPrediction0?.visibility = View.GONE
+
 
         predictions.forEachIndexed {index, prediction ->
-            val location = mapOutputCoordinates(prediction.location)
+            val location = RectF(
+                prediction.location.left * activityCameraBinding.viewFinder.width,
+                prediction.location.top * activityCameraBinding.viewFinder.height,
+                prediction.location.right * activityCameraBinding.viewFinder.width,
+                prediction.location.bottom * activityCameraBinding.viewFinder.height
+            )
 
-            // Update the text and UI
-            (boxPredictions[index]?.layoutParams as ViewGroup.MarginLayoutParams).apply {
-                topMargin = location.top.toInt()
-                leftMargin = location.left.toInt()
-                width = min(activityCameraBinding.viewFinder.width, location.right.toInt() - location.left.toInt())
-                height = min(activityCameraBinding.viewFinder.height, location.bottom.toInt() - location.top.toInt())
+            var boxUI = boxPredictions[index]
+            if (maxSimilarityIndex != -1 && maxSimilarityIndex == index) {
+                // If target face is found, emphasize it (boxPrediction0 uses different color: red)
+                boxUI = activityCameraBinding.boxPrediction0
             }
 
-            // Make sure all UI elements are visible
-            boxPredictions[index]?.visibility = View.VISIBLE
-
+            (boxUI?.layoutParams as ViewGroup.MarginLayoutParams).apply {
+                topMargin = location.top.toInt()
+                leftMargin = location.left.toInt()
+                width = min(
+                    activityCameraBinding.viewFinder.width,
+                    location.right.toInt() - location.left.toInt()
+                )
+                height = min(
+                    activityCameraBinding.viewFinder.height,
+                    location.bottom.toInt() - location.top.toInt()
+                )
+            }
+            boxUI.visibility = View.VISIBLE
         }
 
-    }
-
-    private fun reportPrediction(
-        prediction: FaceDetectionHelper.BoundingBox?
-    ) = activityCameraBinding.viewFinder.post {
-
-        // Early exit: if prediction is not good enough, don't report it
-        if (prediction == null) {
-            activityCameraBinding.boxPrediction1?.visibility = View.GONE
-            activityCameraBinding.boxPrediction2?.visibility = View.GONE
-            activityCameraBinding.boxPrediction3?.visibility = View.GONE
-            activityCameraBinding.boxPrediction4?.visibility = View.GONE
-            activityCameraBinding.boxPrediction5?.visibility = View.GONE
-            return@post
-        }
-
-        // Location has to be mapped to our local coordinates
-        val location = mapOutputCoordinates(prediction.location)
-
-        // Update the text and UI
-        (activityCameraBinding.boxPrediction1?.layoutParams as ViewGroup.MarginLayoutParams).apply {
-            topMargin = location.top.toInt()
-            leftMargin = location.left.toInt()
-            width = min(activityCameraBinding.viewFinder.width, location.right.toInt() - location.left.toInt())
-            height = min(activityCameraBinding.viewFinder.height, location.bottom.toInt() - location.top.toInt())
-        }
-
-        // Make sure all UI elements are visible
-        activityCameraBinding.boxPrediction1?.visibility = View.VISIBLE
-    }
-
-    /**
-     * Helper function used to map the coordinates for objects coming out of
-     * the model into the coordinates that the user sees on the screen.
-     */
-    private fun mapOutputCoordinates(location: RectF): RectF {
-
-        // Step 1: map location to the preview coordinates
-        val previewLocation = RectF(
-            location.left * activityCameraBinding.viewFinder.width,
-            location.top * activityCameraBinding.viewFinder.height,
-            location.right * activityCameraBinding.viewFinder.width,
-            location.bottom * activityCameraBinding.viewFinder.height
-        )
-        return previewLocation
-
-        /*
-        // Step 2: compensate for camera sensor orientation and mirroring
-        val isFrontFacing = lensFacing == CameraSelector.LENS_FACING_FRONT
-        val correctedLocation = if (isFrontFacing) {
-            RectF(
-                activityCameraBinding.viewFinder.width - previewLocation.right,
-                previewLocation.top,
-                activityCameraBinding.viewFinder.width - previewLocation.left,
-                previewLocation.bottom)
-        } else {
-            previewLocation
-        }
-         */
-
-
-
-        /*
-        // Step 3: compensate for 1:1 to 4:3 aspect ratio conversion + small margin
-        val margin = 0.1f
-        val requestedRatio = 4f / 3f
-        val midX = (correctedLocation.left + correctedLocation.right) / 2f
-        val midY = (correctedLocation.top + correctedLocation.bottom) / 2f
-        return if (activityCameraBinding.viewFinder.width < activityCameraBinding.viewFinder.height) {
-            RectF(
-                midX - (1f + margin) * requestedRatio * correctedLocation.width() / 2f,
-                midY - (1f - margin) * correctedLocation.height() / 2f,
-                midX + (1f + margin) * requestedRatio * correctedLocation.width() / 2f,
-                midY + (1f - margin) * correctedLocation.height() / 2f
-            )
-        } else {
-            RectF(
-                midX - (1f - margin) * correctedLocation.width() / 2f,
-                midY - (1f + margin) * requestedRatio * correctedLocation.height() / 2f,
-                midX + (1f - margin) * correctedLocation.width() / 2f,
-                midY + (1f + margin) * requestedRatio * correctedLocation.height() / 2f
-            )
-        }
-         */
-    }
-
-    override fun onResume() {
-        super.onResume()
-
-        // Request permissions each time the app resumes, since they can be revoked at any time
-        if (!hasPermissions(this)) {
-            ActivityCompat.requestPermissions(
-                this, permissions.toTypedArray(), permissionsRequestCode)
-        } else {
-            bindCameraUseCases()
-        }
     }
 
     override fun onRequestPermissionsResult(
@@ -627,13 +478,27 @@ class CameraActivity : AppCompatActivity() {
         ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
     }
 
+    /** For debugging */
+    private fun saveBitmap(bitmap: Bitmap, filename: String) {
+        val file = File(applicationInfo.dataDir + "/img/" + filename)
+        try{
+            val out = FileOutputStream(file)
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
+            out.close()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+
     companion object {
         private val TAG = CameraActivity::class.java.simpleName
 
         private const val DET_MODEL_PATH = "retinaface-mbv2-int8.tflite"
+        //private const val DET_MODEL_PATH = "retinaface-mbv2.tflite"
         private const val REC_MODEL_PATH = "arc-mbv2-int8.tflite"
-        private const val SIM_THRESHOLD = 0.8f
+        private const val SIM_THRESHOLD = 0.7f
 
-        private const val MAX_NUM_FACES = 6
+        private const val MAX_NUM_FACES = 5
     }
 }

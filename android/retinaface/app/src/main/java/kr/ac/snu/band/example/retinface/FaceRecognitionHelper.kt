@@ -22,6 +22,8 @@ import org.mrsnu.band.Model
 import org.mrsnu.band.Tensor
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.sqrt
 
 /**
@@ -31,23 +33,26 @@ class FaceRecognitionHelper(private val engine: Engine) {
 
     fun predict(models : List<Model>, inputTensor : List<List<Tensor>>, outputTensor: List<List<Tensor>>): List<FloatArray> {
         // TODO : support multiple faces
-        val i = 0
 
-        //engine.requestSync(model, inputTensor, outputTensor)
-        //val requests = engine.requestAsyncBatch(models, inputTensor)
-        //engine.wait(requests[i], outputTensor[i])
+        val identityList = mutableListOf<FloatArray>()
 
-        engine.requestSync(models[i], inputTensor[i], outputTensor[i])
-        val outBuffer = outputTensor[i][0].data.order(ByteOrder.nativeOrder())
-        val identity = FloatArray(OUTPUT_SHAPE[1])
-        (outBuffer as ByteBuffer).asFloatBuffer()[identity]
+        for (i in models.indices) {
 
-        // log hash val of identity
+            //engine.requestSync(models[i], inputTensor[i], outputTensor[i])
+            val requests = engine.requestAsyncBatch(models, inputTensor)
+            engine.wait(requests[i], outputTensor[i])
 
-        return listOf(identity)
+            val outBuffer = outputTensor[i][0].data.order(ByteOrder.nativeOrder())
+            val identity = FloatArray(OUTPUT_SHAPE[1])
+            (outBuffer as ByteBuffer).asFloatBuffer()[identity]
+
+            identityList.add(identity)
+        }
+
+        return identityList
     }
 
-    fun dotProduct(a : FloatArray, b : FloatArray) : Float {
+    private fun dotProduct(a : FloatArray, b : FloatArray) : Float {
         assert (a.size == b.size)
         var sum = 0f
         for (i in a.indices) {
@@ -56,12 +61,18 @@ class FaceRecognitionHelper(private val engine: Engine) {
         return sum
     }
 
-    fun norm(a : FloatArray) : Float {
+    private fun norm(a : FloatArray) : Float {
         var sum = 0f
         for (i in a.indices) {
             sum += a[i] * a[i]
         }
         return sqrt(sum.toDouble()).toFloat()
+    }
+
+    fun similarity(a : FloatArray, b : FloatArray) : Float {
+        var similarity: Float = (dotProduct(a, b) / (norm(a) * norm(b)) + 1f) / 2f // [-1, 1] -> [0, 1]
+        similarity = min(max(similarity, 0f), 1f)
+        return similarity
     }
 
     companion object {
