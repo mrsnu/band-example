@@ -46,10 +46,7 @@ class HolisticFaceHelper(private val engine: Engine, private val faceDetectorMod
     data class Landmark(var x: Float, var y: Float, var z: Float)
     data class FaceBoxPrediction(val box: RectF, val score: Float)
 
-    fun detectorPredict(inputTensors : List<Tensor>, outputTensors: List<Tensor>): List<FaceBoxPrediction> {
-        // inference
-        engine.requestSync(faceDetectorModel, inputTensors, outputTensors)
-
+    fun detectorPostProcess(outputTensors: List<Tensor>): List<FaceBoxPrediction> {
         // post process face detector output
         var faceBoxes = ArrayList<FaceBoxPrediction>()
         val outputBuffer = FloatArray(DET_NUM_RESULTS * DET_LEN_RESULT)
@@ -85,6 +82,12 @@ class HolisticFaceHelper(private val engine: Engine, private val faceDetectorMod
         faceBoxes = nms(faceBoxes, IOU_THRESHOLD)
 
         return faceBoxes
+    }
+
+    fun detectorPredict(inputTensors : List<Tensor>, outputTensors: List<Tensor>): List<FaceBoxPrediction> {
+        // inference
+        engine.requestSync(faceDetectorModel, inputTensors, outputTensors)
+        return detectorPostProcess(outputTensors)
     }
 
     private fun filterBoxesBySize(boxes: ArrayList<FaceBoxPrediction>): ArrayList<FaceBoxPrediction> {

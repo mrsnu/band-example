@@ -97,7 +97,6 @@ class CameraActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-
         // Terminate all outstanding analyzing jobs (if there is any).
         executor.apply {
             shutdown()
@@ -154,10 +153,7 @@ class CameraActivity : AppCompatActivity() {
                 val predictions = holisticHelper.predict(image, image.imageInfo.rotationDegrees)
                 image.close()
                 if (predictions != null) {
-                    Log.d("HYUNSOO", "drawing prediction...")
                     drawPredictions(predictions)
-                }else{
-                    Log.d("HYUNSOO", "no drawing...")
                 }
 
                 // Compute the FPS of the entire pipeline
@@ -183,10 +179,10 @@ class CameraActivity : AppCompatActivity() {
             // Use the camera object to link our preview use case with the view
             preview.setSurfaceProvider(activityCameraBinding.viewFinder.surfaceProvider)
 
-//            // Hide progressBar when Band is initialized
-//            if(frameCounter == 2){
-//                activityCameraBinding.indeterminateBar?.visibility = View.GONE
-//            }
+            // Hide progressBar when Band is initialized
+            if(frameCounter == 2){
+                activityCameraBinding.indeterminateBar?.visibility = View.GONE
+            }
 
         }, ContextCompat.getMainExecutor(this))
     }

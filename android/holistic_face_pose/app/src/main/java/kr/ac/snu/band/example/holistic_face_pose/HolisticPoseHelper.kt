@@ -33,51 +33,54 @@ class HolisticPoseHelper(private val engine: Engine, private val poseDetectorMod
 
     data class PosePrediction(val box: RectF, val label: String, val score: Float)
 
-    fun detectorPredict(inputTensors: List<Tensor>, outputTensors: List<Tensor>): ArrayList<PosePrediction> {
-    engine.requestSync(poseDetectorModel, inputTensors, outputTensors)
-    val outputBuffer = mutableMapOf<Int, FloatArray>(
-        0 to FloatArray(4 * OBJECT_COUNT),
-        1 to FloatArray(OBJECT_COUNT),
-        2 to FloatArray(OBJECT_COUNT),
-        3 to FloatArray(1)
-    )
-
-    outputTensors.forEachIndexed { index, tensor ->
-        // byteBuffer to floatArray
-        val byteBuffer = tensor.data.order(ByteOrder.nativeOrder()).rewind()
-        (byteBuffer as ByteBuffer).asFloatBuffer().get(outputBuffer[index])
-    }
-
-    var objects = ArrayList<PosePrediction>(OBJECT_COUNT)
-    (0 until OBJECT_COUNT).map {
-        val locationBuffer = outputBuffer[0]
-        val labelBuffer = outputBuffer[1]
-        val scoreBuffer = outputBuffer[2]
-
-        val pose = PosePrediction(
-            // The locations are an array of [0, 1] floats for [top, left, bottom, right]
-            box = RectF(
-                locationBuffer?.get(4 * it + 1) ?: 0f,
-                locationBuffer?.get(4 * it) ?: 0f,
-                locationBuffer?.get(4 * it + 3) ?: 0f,
-                locationBuffer?.get(4 * it + 2) ?: 0f
-            ),
-
-            // SSD Mobilenet V1 Model assumes class 0 is background class
-            // in label file and class labels start from 1 to number_of_classes + 1,
-            // while outputClasses correspond to class index from 0 to number_of_classes
-            label = labels[1 + (labelBuffer?.get(it)?.toInt() ?: 0)],
-
-            // Score is a single value of [0, 1]
-            score = scoreBuffer?.get(it) ?: 0f
+    fun detectorPostProcess(outputTensors: List<Tensor>): ArrayList<PosePrediction>{
+        val outputBuffer = mutableMapOf<Int, FloatArray>(
+            0 to FloatArray(4 * OBJECT_COUNT),
+            1 to FloatArray(OBJECT_COUNT),
+            2 to FloatArray(OBJECT_COUNT),
+            3 to FloatArray(1)
         )
-        if (pose.score >= SCORE_THRESH && pose.label == "person"){
-            objects.add(pose)
+
+        outputTensors.forEachIndexed { index, tensor ->
+            // byteBuffer to floatArray
+            val byteBuffer = tensor.data.order(ByteOrder.nativeOrder()).rewind()
+            (byteBuffer as ByteBuffer).asFloatBuffer().get(outputBuffer[index])
         }
 
+        var objects = ArrayList<PosePrediction>(OBJECT_COUNT)
+        (0 until OBJECT_COUNT).map {
+            val locationBuffer = outputBuffer[0]
+            val labelBuffer = outputBuffer[1]
+            val scoreBuffer = outputBuffer[2]
+
+            val pose = PosePrediction(
+                // The locations are an array of [0, 1] floats for [top, left, bottom, right]
+                box = RectF(
+                    locationBuffer?.get(4 * it + 1) ?: 0f,
+                    locationBuffer?.get(4 * it) ?: 0f,
+                    locationBuffer?.get(4 * it + 3) ?: 0f,
+                    locationBuffer?.get(4 * it + 2) ?: 0f
+                ),
+
+                // SSD Mobilenet V1 Model assumes class 0 is background class
+                // in label file and class labels start from 1 to number_of_classes + 1,
+                // while outputClasses correspond to class index from 0 to number_of_classes
+                label = labels[1 + (labelBuffer?.get(it)?.toInt() ?: 0)],
+
+                // Score is a single value of [0, 1]
+                score = scoreBuffer?.get(it) ?: 0f
+            )
+            if (pose.score >= SCORE_THRESH && pose.label == "person"){
+                objects.add(pose)
+            }
+
+        }
+        objects = filterBoxesBySize(objects)
+        return objects
     }
-    objects = filterBoxesBySize(objects)
-    return objects
+    fun detectorPredict(inputTensors: List<Tensor>, outputTensors: List<Tensor>): ArrayList<PosePrediction> {
+        engine.requestSync(poseDetectorModel, inputTensors, outputTensors)
+        return detectorPostProcess(outputTensors)
     }
 
     fun landmarksPredict(inputTensors: List<Tensor>, outputTensors: List<Tensor>): ArrayList<HolisticFaceHelper.Landmark> {
