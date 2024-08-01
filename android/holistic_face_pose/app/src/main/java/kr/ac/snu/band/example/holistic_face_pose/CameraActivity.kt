@@ -75,6 +75,7 @@ class CameraActivity : AppCompatActivity() {
                 // If image analysis is in paused state, resume it
                 pauseAnalysis = false
                 activityCameraBinding.imagePredicted.visibility = View.GONE
+                activityCameraBinding.indeterminateBar?.visibility = View.GONE
 
             } else {
                 // Otherwise, pause image analysis and freeze image
@@ -87,6 +88,7 @@ class CameraActivity : AppCompatActivity() {
                     bitmapBuffer, 0, 0, bitmapBuffer.width, bitmapBuffer.height, matrix, true)
                 activityCameraBinding.imagePredicted.setImageBitmap(uprightImage)
                 activityCameraBinding.imagePredicted.visibility = View.VISIBLE
+                activityCameraBinding.indeterminateBar?.visibility = View.VISIBLE
             }
 
             // Re-enable camera controls
@@ -116,9 +118,8 @@ class CameraActivity : AppCompatActivity() {
 
             // Set up the view finder use case to display camera preview
             val preview = Preview.Builder()
-//                .setTargetAspectRatio(AspectRatio.RATIO_4_3)
-//                .setTargetRotation(activityCameraBinding.viewFinder.display.rotation)
-                .setTargetResolution(Size(480, 480))
+                .setTargetAspectRatio(AspectRatio.RATIO_4_3)
+                .setTargetRotation(activityCameraBinding.viewFinder.display.rotation)
                 .build()
 
             // Set up the image analysis use case which will process frames in real time
@@ -153,11 +154,10 @@ class CameraActivity : AppCompatActivity() {
                 val predictions = holisticHelper.predict(image, image.imageInfo.rotationDegrees)
                 image.close()
                 if (predictions != null) {
+                    Log.d("HYUNSOO", "drawing prediction...")
                     drawPredictions(predictions)
-                }
-
-                if(frameCounter == 2){
-                    setProgressBarInvisible()
+                }else{
+                    Log.d("HYUNSOO", "no drawing...")
                 }
 
                 // Compute the FPS of the entire pipeline
@@ -183,10 +183,10 @@ class CameraActivity : AppCompatActivity() {
             // Use the camera object to link our preview use case with the view
             preview.setSurfaceProvider(activityCameraBinding.viewFinder.surfaceProvider)
 
-            // Hide progressBar when Band is initialized
-            if(frameCounter == 2){
-                activityCameraBinding.indeterminateBar?.visibility = View.GONE
-            }
+//            // Hide progressBar when Band is initialized
+//            if(frameCounter == 2){
+//                activityCameraBinding.indeterminateBar?.visibility = View.GONE
+//            }
 
         }, ContextCompat.getMainExecutor(this))
     }

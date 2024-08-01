@@ -60,10 +60,10 @@ class HolisticFaceHelper(private val engine: Engine, private val faceDetectorMod
         for(i in 0 until DET_NUM_RESULTS){
             val confidence = outputBuffer[i * DET_LEN_RESULT + 15]
             if (confidence > SCORE_THRESH){
-                Log.d("HYUNSOO", "BOX: ${"%.02f".format(outputBuffer?.get(4 * i + 0) ?: 0f)},  " +
-                        "${"%.02f".format(outputBuffer?.get(4 * i + 1) ?: 0f)}," +
-                        " ${"%.02f".format(outputBuffer?.get(4 * i + 2) ?: 0f)}, " +
-                        " ${"%.02f".format(outputBuffer?.get(4 * i + 3) ?: 0f)}")
+//                Log.d("HYUNSOO", "BOX: ${"%.02f".format(outputBuffer?.get(4 * i + 0) ?: 0f)},  " +
+//                        "${"%.02f".format(outputBuffer?.get(4 * i + 1) ?: 0f)}," +
+//                        " ${"%.02f".format(outputBuffer?.get(4 * i + 2) ?: 0f)}, " +
+//                        " ${"%.02f".format(outputBuffer?.get(4 * i + 3) ?: 0f)}")
                 faceBoxes.add(
                     FaceBoxPrediction(
                         box = RectF(
