@@ -10,13 +10,20 @@ import androidx.camera.core.ImageProxy
 import org.mrsnu.band.BackendType
 import org.mrsnu.band.Band
 import org.mrsnu.band.Buffer
-import org.mrsnu.band.BufferFormat
+import org.mrsnu.band.ColorSpaceConvert
 import org.mrsnu.band.ConfigBuilder
 import org.mrsnu.band.CpuMaskFlag
+import org.mrsnu.band.DTypeConvert
+import org.mrsnu.band.DataType
 import org.mrsnu.band.Device
 import org.mrsnu.band.Engine
-import org.mrsnu.band.ImageProcessorBuilder
+import org.mrsnu.band.ImageFormat
+import org.mrsnu.band.RequestOption
+import org.mrsnu.band.PipelineBuilder
 import org.mrsnu.band.Model
+import org.mrsnu.band.Normalize
+import org.mrsnu.band.Resize
+import org.mrsnu.band.Rotate
 import org.mrsnu.band.SchedulerType
 import org.mrsnu.band.SubgraphPreparationType
 import org.mrsnu.band.Tensor
@@ -63,15 +70,11 @@ class HolisticHelper(assetManager: AssetManager) {
         builder.addWorkerNumThreads(intArrayOf(1, 1, 1, 1))
         builder.addWorkerCPUMasks(
             arrayOf<CpuMaskFlag>(
-                CpuMaskFlag.ALL, CpuMaskFlag.ALL,
+                CpuMaskFlag.BIG, CpuMaskFlag.ALL,
                 CpuMaskFlag.ALL, CpuMaskFlag.ALL
             ))
-        builder.addSmoothingFactor(0.1f)
-        builder.addProfileDataPath("/data/local/tmp/profile.json")
-        builder.addOnline(true)
-        builder.addNumWarmups(1)
-        builder.addNumRuns(1)
-        builder.addAllowWorkSteal(true)
+        builder.addNumWarmups(5)
+        builder.addNumRuns(5)
         builder.addAvailabilityCheckIntervalMs(30000)
         builder.addScheduleWindowSize(10)
         Engine(builder.build())
@@ -123,6 +126,10 @@ class HolisticHelper(assetManager: AssetManager) {
         model
     }
 
+    private val option by lazy {
+        RequestOption()
+    }
+
     private val detectorModels by lazy{
         arrayOf(faceDetectorModel, poseDetectorModel)
     }
@@ -167,7 +174,7 @@ class HolisticHelper(assetManager: AssetManager) {
     }
 
     private val faceHelper by lazy {
-        HolisticFaceHelper(engine, faceDetectorModel, faceLandmarksModel)
+        HolisticFaceHelper(engine, faceDetectorModel, faceLandmarksModel, option)
     }
     private val poseHelper by lazy {
         val labels = assetManager.open(LABEL_PATH).bufferedReader().useLines { it.toList() }
@@ -178,13 +185,12 @@ class HolisticHelper(assetManager: AssetManager) {
         val cropSize = minOf(cameraImageProperties.width, cameraImageProperties.height)
         val cropStart = Size((cameraImageProperties.width - cropSize) / 2, (cameraImageProperties.height - cropSize) / 2)
 
-        val builder = ImageProcessorBuilder()
-        builder.addColorSpaceConvert(BufferFormat.RGB)
-        // center crop
-//        builder.addCrop(cropStart.width, cropStart.height, cropStart.width + cropSize - 1, cropStart.height + cropSize - 1)
-        builder.addResize(detectorInputSizes[FACE].width, detectorInputSizes[FACE].height)
-        builder.addRotate(-cameraImageProperties.rotationDegrees)
-        builder.addDataTypeConvert()
+        val builder = PipelineBuilder()
+        builder.add(ColorSpaceConvert(ImageFormat.RGB))
+        builder.add(Resize(detectorInputSizes[FACE].width, detectorInputSizes[FACE].height))
+        builder.add(Rotate(-cameraImageProperties.rotationDegrees))
+        builder.add(DTypeConvert(DataType.FLOAT32))
+        builder.add(Normalize(127.5f, 127.5f))
         builder.build()
     }
 
@@ -192,12 +198,12 @@ class HolisticHelper(assetManager: AssetManager) {
         val cropSize = minOf(cameraImageProperties.width, cameraImageProperties.height)
         val cropStart = Size((cameraImageProperties.width - cropSize) / 2, (cameraImageProperties.height - cropSize) / 2)
 
-        val builder = ImageProcessorBuilder()
-        builder.addColorSpaceConvert(BufferFormat.RGB)
+        val builder = PipelineBuilder()
+        builder.add(ColorSpaceConvert(ImageFormat.RGB))
         // center crop
 //        builder.addCrop(cropStart.width, cropStart.height, cropStart.width + cropSize - 1, cropStart.height + cropSize - 1)
-        builder.addResize(detectorInputSizes[POSE].width, detectorInputSizes[POSE].height)
-        builder.addRotate(-cameraImageProperties.rotationDegrees)
+        builder.add(Resize(detectorInputSizes[POSE].width, detectorInputSizes[POSE].height))
+        builder.add(Rotate(-cameraImageProperties.rotationDegrees))
         builder.build()
     }
 
@@ -216,7 +222,7 @@ class HolisticHelper(assetManager: AssetManager) {
     private fun predict(inputBuffer: Buffer){
         // 1. Detect face and person first
         // Process
-        faceDetectorImageProcessor.process(inputBuffer, detectorInputTensors[FACE][0])
+        detectorInputTensors[FACE][0]. = faceDetectorImageProcessor.run(inputBuffer)
         poseDetectorImageProcessor.process(inputBuffer, detectorInputTensors[POSE][0])
         // Inference
         var requests = engine.requestAsyncBatch(detectorModels.toMutableList(), detectorInputTensors.toMutableList()

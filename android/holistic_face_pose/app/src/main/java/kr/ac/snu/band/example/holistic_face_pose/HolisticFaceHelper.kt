@@ -23,7 +23,9 @@ import android.util.Log
 import android.util.Size
 import org.mrsnu.band.Engine
 import org.mrsnu.band.Model
+import org.mrsnu.band.Request
 import org.mrsnu.band.Tensor
+import org.mrsnu.band.RequestOption
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.max
@@ -33,7 +35,7 @@ import kotlin.math.min
 /**
  * Helper class used to communicate between our app and the Band detection model
  */
-class HolisticFaceHelper(private val engine: Engine, private val faceDetectorModel: Model, private val faceLandmarksModel: Model) {
+class HolisticFaceHelper(private val engine: Engine, private val faceDetectorModel: Model, private val faceLandmarksModel: Model, private val option: RequestOption) {
 
     // retinaface detector:  (1, 640, 640, 3) -> [(16800, 16)]
     // landmarks: (1, 192, 192, 3) -> [(1, 1, 1, 1404), (1, 1, 1, 1)]
@@ -86,7 +88,7 @@ class HolisticFaceHelper(private val engine: Engine, private val faceDetectorMod
 
     fun detectorPredict(inputTensors : List<Tensor>, outputTensors: List<Tensor>): List<FaceBoxPrediction> {
         // inference
-        engine.requestSync(faceDetectorModel, inputTensors, outputTensors)
+        engine.requestSync(faceDetectorModel, inputTensors, outputTensors, option)
         return detectorPostProcess(outputTensors)
     }
 
@@ -139,7 +141,7 @@ class HolisticFaceHelper(private val engine: Engine, private val faceDetectorMod
 
     fun landmarksPredict(inputTensors : List<Tensor>, outputTensors: List<Tensor>, inputSize: Size): ArrayList<Landmark> {
         // inference
-        engine.requestSync(faceLandmarksModel, inputTensors, outputTensors)
+        engine.requestSync(faceLandmarksModel, inputTensors, outputTensors, option)
 
         // post process face landmarks output
         val outputBuffer = FloatArray(LND_NUM_RESULTS * LND_LEN_RESULT)
