@@ -22,6 +22,7 @@ import android.util.Size
 
 import org.mrsnu.band.Engine
 import org.mrsnu.band.Model
+import org.mrsnu.band.RequestOption
 import org.mrsnu.band.Tensor
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -79,13 +80,13 @@ class HolisticPoseHelper(private val engine: Engine, private val poseDetectorMod
         return objects
     }
     fun detectorPredict(inputTensors: List<Tensor>, outputTensors: List<Tensor>): ArrayList<PosePrediction> {
-        engine.requestSync(poseDetectorModel, inputTensors, outputTensors)
+        engine.requestSync(poseDetectorModel, inputTensors, outputTensors, RequestOption())
         return detectorPostProcess(outputTensors)
     }
 
     fun landmarksPredict(inputTensors: List<Tensor>, outputTensors: List<Tensor>): ArrayList<HolisticFaceHelper.Landmark> {
         // inference
-        engine.requestSync(poseLandmarksModel, inputTensors, outputTensors)
+        engine.requestSync(poseLandmarksModel, inputTensors, outputTensors, RequestOption())
 
         // post-process
         val outputBuffer = FloatArray(LND_NUM_RESULTS * LND_LEN_RESULT)

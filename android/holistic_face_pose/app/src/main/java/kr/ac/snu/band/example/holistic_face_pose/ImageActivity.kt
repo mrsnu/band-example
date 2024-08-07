@@ -11,13 +11,19 @@ import kr.ac.snu.band.example.holistic_face_pose.databinding.ActivityCameraBindi
 import org.mrsnu.band.BackendType
 import org.mrsnu.band.Band
 import org.mrsnu.band.Buffer
-import org.mrsnu.band.BufferFormat
 import org.mrsnu.band.ConfigBuilder
 import org.mrsnu.band.CpuMaskFlag
+import org.mrsnu.band.Crop
 import org.mrsnu.band.Device
 import org.mrsnu.band.Engine
-import org.mrsnu.band.ImageProcessorBuilder
+import org.mrsnu.band.ImageBuffer
+import org.mrsnu.band.ImageFormat
+import org.mrsnu.band.ImageOrientation
 import org.mrsnu.band.Model
+import org.mrsnu.band.PipelineBuilder
+import org.mrsnu.band.PlaneBuffer
+import org.mrsnu.band.Resize
+import org.mrsnu.band.Rotate
 import org.mrsnu.band.SchedulerType
 import org.mrsnu.band.SubgraphPreparationType
 import org.mrsnu.band.Tensor
@@ -52,12 +58,8 @@ class ImageActivity: AppCompatActivity() {
                 CpuMaskFlag.ALL, CpuMaskFlag.ALL,
                 CpuMaskFlag.ALL, CpuMaskFlag.ALL
             ))
-        builder.addSmoothingFactor(0.1f)
-        builder.addProfileDataPath("/data/local/tmp/profile.json")
-        builder.addOnline(true)
-        builder.addNumWarmups(1)
-        builder.addNumRuns(1)
-        builder.addAllowWorkSteal(true)
+        builder.addNumWarmups(5)
+        builder.addNumRuns(30)
         builder.addAvailabilityCheckIntervalMs(30000)
         builder.addScheduleWindowSize(10)
         Engine(builder.build())
@@ -134,12 +136,12 @@ class ImageActivity: AppCompatActivity() {
     private val imageProcessor by lazy {
         val cropSize = minOf(bitmapBuffer.width, bitmapBuffer.height)
         val cropStart = Size((bitmapBuffer.width - cropSize) / 2, (bitmapBuffer.height - cropSize) / 2)
-        val builder = ImageProcessorBuilder()
+        val builder = PipelineBuilder()
 //        builder.addColorSpaceConvert(BufferFormat.RGB)
         // center crop
-        builder.addCrop(cropStart.width, cropStart.height, cropStart.width + cropSize - 1, cropStart.height + cropSize - 1)
-        builder.addResize(faceDetectorInputSize.width, faceDetectorInputSize.height)
-        builder.addRotate(-imageRotationDegrees)
+        builder.add(Crop(cropStart.width, cropStart.height, cropStart.width + cropSize - 1, cropStart.height + cropSize - 1))
+        builder.add(Resize(faceDetectorInputSize.width, faceDetectorInputSize.height))
+        builder.add(Rotate(-imageRotationDegrees))
         builder.build()
     }
 
@@ -170,9 +172,10 @@ class ImageActivity: AppCompatActivity() {
         val bytes = loadedBitmap.byteCount
         val buffer = ByteBuffer.allocate(bytes)
         loadedBitmap.copyPixelsToBuffer(buffer)
-        inputBuffer = Buffer(buffer, loadedBitmap.width, loadedBitmap.height, BufferFormat.RGB)
+        inputBuffer = ImageBuffer(buffer, loadedBitmap.width, loadedBitmap.height, ImageFormat.RGB, ImageOrientation.TOP_LEFT)
 
-        imageProcessor.process(inputBuffer, faceDetectorInputTensors[0])
+        val imageBuffer =  imageProcessor.run(inputBuffer)
+        imageBuffer.copyToTensor(faceDetectorInputTensors[0])
         Log.d("HYUNSOO", "IMAGE PROCESSING")
 //        // Perform the face & pose pipeline for the loaded image
 //        val predictions = helper.predict(faceDetectorInputTensors, faceDetectorOutputTensors)

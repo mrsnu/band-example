@@ -13,11 +13,14 @@ import org.mrsnu.band.Buffer
 import org.mrsnu.band.ColorSpaceConvert
 import org.mrsnu.band.ConfigBuilder
 import org.mrsnu.band.CpuMaskFlag
+import org.mrsnu.band.Crop
 import org.mrsnu.band.DTypeConvert
 import org.mrsnu.band.DataType
 import org.mrsnu.band.Device
 import org.mrsnu.band.Engine
+import org.mrsnu.band.ImageBuffer
 import org.mrsnu.band.ImageFormat
+import org.mrsnu.band.ImageOrientation
 import org.mrsnu.band.RequestOption
 import org.mrsnu.band.PipelineBuilder
 import org.mrsnu.band.Model
@@ -212,7 +215,7 @@ class HolisticHelper(assetManager: AssetManager) {
         cameraImageProperties = ImageProperties(image.width, image.height, rotationDegrees, true)
 
         val realImage = image.image ?: return null
-        val inputBuffer = Buffer(realImage.planes, cameraImageProperties.width, cameraImageProperties.height, BufferFormat.YV12)
+        val inputBuffer = ImageBuffer(realImage.planes, cameraImageProperties.width, cameraImageProperties.height, ImageFormat.YV12, ImageOrientation.TOP_LEFT)
 
         predict(inputBuffer)
 
@@ -222,11 +225,17 @@ class HolisticHelper(assetManager: AssetManager) {
     private fun predict(inputBuffer: Buffer){
         // 1. Detect face and person first
         // Process
-        detectorInputTensors[FACE][0]. = faceDetectorImageProcessor.run(inputBuffer)
-        poseDetectorImageProcessor.process(inputBuffer, detectorInputTensors[POSE][0])
+        val faceDetectionInputBuffer = faceDetectorImageProcessor.run(inputBuffer)
+        val poseDetectionInputBuffer = poseDetectorImageProcessor.run(inputBuffer)
+
+        faceDetectionInputBuffer.copyToTensor(detectorInputTensors[FACE][0])
+        poseDetectionInputBuffer.copyToTensor(detectorInputTensors[POSE][0])
+
+        // new empty list of RequestOption
+        val options = mutableListOf<RequestOption>()
+
         // Inference
-        var requests = engine.requestAsyncBatch(detectorModels.toMutableList(), detectorInputTensors.toMutableList()
-        )
+        var requests = engine.requestAsyncBatch(detectorModels.toMutableList(), detectorInputTensors.toMutableList(), options)
         engine.wait(requests[FACE], detectorOutputTensors[FACE].toMutableList())
         engine.wait(requests[POSE], detectorOutputTensors[POSE].toMutableList())
         // Post-process
@@ -250,21 +259,22 @@ class HolisticHelper(assetManager: AssetManager) {
                 faceDetection!!.box.bottom * cameraImageProperties.height
             )
 
-            val builder = ImageProcessorBuilder()
-            builder.addColorSpaceConvert(BufferFormat.RGB)
-            builder.addCrop(faceCropSize.left.toInt(), faceCropSize.top.toInt(),
+            val builder = PipelineBuilder()
+            builder.add(ColorSpaceConvert(ImageFormat.RGB))
+            builder.add(
+                Crop(faceCropSize.left.toInt(), faceCropSize.top.toInt(),
                 faceCropSize.right.toInt(), faceCropSize.bottom.toInt()
             )
-            builder.addResize(faceLandmarksInputSize.width, faceLandmarksInputSize.height)
-            builder.addNormalize(0.0f, 255.0f)
-            builder.addRotate(-cameraImageProperties.rotationDegrees)
-            builder.addDataTypeConvert()
+            )
+            builder.add(Resize(faceLandmarksInputSize.width, faceLandmarksInputSize.height))
+            builder.add(Normalize(0.0f, 255.0f))
+            builder.add(Rotate(-cameraImageProperties.rotationDegrees))
             val landmarksImageProcessor = builder.build()
             Log.d("HYUNSOO", "done till here3")
-            landmarksImageProcessor.process(
-                inputBuffer,
-                faceLandmarksInputTensors[0]
+            val landmarkInputBuffer = landmarksImageProcessor.run(
+                inputBuffer
             )
+            landmarkInputBuffer.copyToTensor(faceLandmarksInputTensors[0])
             Log.d("HYUNSOO", "done till here4")
             faceLandmarks = faceHelper.landmarksPredict(
                 faceLandmarksInputTensors,
@@ -284,16 +294,17 @@ class HolisticHelper(assetManager: AssetManager) {
                 poseDetection!!.box.bottom * cameraImageProperties.height
             )
 
-            val builder = ImageProcessorBuilder()
-            builder.addColorSpaceConvert(BufferFormat.RGB)
-            builder.addCrop(
+            val builder = PipelineBuilder()
+            builder.add(ColorSpaceConvert(ImageFormat.RGB))
+            builder.add(Crop(
                 poseCropSize.left.toInt(), poseCropSize.top.toInt(),
                 poseCropSize.right.toInt(), poseCropSize.bottom.toInt()
-            )
-            builder.addResize(poseLandmarksInputSize.width, poseLandmarksInputSize.height)
-            builder.addRotate(-cameraImageProperties.rotationDegrees)
+            ))
+            builder.add(Resize(poseLandmarksInputSize.width, poseLandmarksInputSize.height))
+            builder.add(Rotate(-cameraImageProperties.rotationDegrees))
             val poseLandmarkImageProcessor = builder.build()
-            poseLandmarkImageProcessor.process(inputBuffer, poseLandmarksInputTensors[0])
+            val poseLandmarkInputBuffer = poseLandmarkImageProcessor.run(inputBuffer)
+            poseLandmarkInputBuffer.copyToTensor(poseLandmarksInputTensors[0])
             poseLandmarks = poseHelper.landmarksPredict(poseLandmarksInputTensors, poseLandmarksOutputTensors)
         }
     }
