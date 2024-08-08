@@ -150,6 +150,8 @@ class CameraActivity : AppCompatActivity() {
                     image.close()
                     return@Analyzer
                 }
+                // print rotation degree
+
                 val predictions = holisticHelper.predict(image, image.imageInfo.rotationDegrees)
                 image.close()
                 if (predictions != null) {

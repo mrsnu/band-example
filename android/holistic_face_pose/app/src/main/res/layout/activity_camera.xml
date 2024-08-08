@@ -27,6 +27,7 @@
         android:id="@+id/view_finder"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        app:layout_constraintEnd_toEndOf="@+id/image_predicted"
         tools:ignore="MissingConstraints" />
 
     <ImageView
@@ -74,8 +75,8 @@
         android:layout_height="match_parent"
         android:layout_gravity="center"
         android:scaleType="fitCenter"
-        tools:layout_editor_absoluteX="-108dp"
-        tools:layout_editor_absoluteY="106dp" />
+        tools:layout_editor_absoluteX="55dp"
+        tools:layout_editor_absoluteY="-228dp" />
 
     <ProgressBar
         android:id="@+id/indeterminateBar"

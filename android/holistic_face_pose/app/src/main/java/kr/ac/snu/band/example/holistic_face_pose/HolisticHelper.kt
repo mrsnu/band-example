@@ -77,7 +77,7 @@ class HolisticHelper(assetManager: AssetManager) {
                 CpuMaskFlag.ALL, CpuMaskFlag.ALL
             ))
         builder.addNumWarmups(5)
-        builder.addNumRuns(5)
+        builder.addNumRuns(50)
         builder.addAvailabilityCheckIntervalMs(30000)
         builder.addScheduleWindowSize(10)
         Engine(builder.build())
@@ -191,7 +191,6 @@ class HolisticHelper(assetManager: AssetManager) {
         val builder = PipelineBuilder()
         builder.add(ColorSpaceConvert(ImageFormat.RGB))
         builder.add(Resize(detectorInputSizes[FACE].width, detectorInputSizes[FACE].height))
-        builder.add(Rotate(-cameraImageProperties.rotationDegrees))
         builder.add(DTypeConvert(DataType.FLOAT32))
         builder.add(Normalize(127.5f, 127.5f))
         builder.build()
@@ -206,7 +205,6 @@ class HolisticHelper(assetManager: AssetManager) {
         // center crop
 //        builder.addCrop(cropStart.width, cropStart.height, cropStart.width + cropSize - 1, cropStart.height + cropSize - 1)
         builder.add(Resize(detectorInputSizes[POSE].width, detectorInputSizes[POSE].height))
-        builder.add(Rotate(-cameraImageProperties.rotationDegrees))
         builder.build()
     }
 
@@ -268,7 +266,6 @@ class HolisticHelper(assetManager: AssetManager) {
             )
             builder.add(Resize(faceLandmarksInputSize.width, faceLandmarksInputSize.height))
             builder.add(Normalize(0.0f, 255.0f))
-            builder.add(Rotate(-cameraImageProperties.rotationDegrees))
             val landmarksImageProcessor = builder.build()
             Log.d("HYUNSOO", "done till here3")
             val landmarkInputBuffer = landmarksImageProcessor.run(
@@ -287,7 +284,7 @@ class HolisticHelper(assetManager: AssetManager) {
         // 2-2. Pose landmarks
         var poseCropSize: RectF
         if(poseRet.isNotEmpty()) {
-            poseCropSize = RectF(
+            poseCropSize = RectF(--
                 poseDetection!!.box.left * cameraImageProperties.width,
                 poseDetection!!.box.top * cameraImageProperties.height,
                 poseDetection!!.box.right * cameraImageProperties.width,
