@@ -172,7 +172,7 @@ class HolisticHelper(assetManager: AssetManager) {
     private val detectorOutputTensors by lazy {
         arrayOf(
             List<Tensor>(engine.getNumOutputTensors(detectorModels[FACE])) { engine.createOutputTensor(detectorModels[FACE], it) },
-            List<Tensor>(engine.getNumOutputTensors(detectorModels[POSE])) { engine.createInputTensor(detectorModels[POSE], it) }
+            List<Tensor>(engine.getNumOutputTensors(detectorModels[POSE])) { engine.createOutputTensor(detectorModels[POSE], it) }
         )
     }
 
@@ -336,7 +336,7 @@ class HolisticHelper(assetManager: AssetManager) {
         private const val LABEL_PATH = "coco_ssd_mobilenet_v1_1.0_labels.txt"
         private const val POSE_DETECTOR_MODEL_PATH = "coco_ssd_mobilenet_v1_1.0_quant.tflite"
         private const val POSE_LANDMARKS_MODEL_PATH = "lite-model_movenet_singlepose_lightning_tflite_int8_4.tflite"
-        private const val FACE_DETECTOR_MODEL_PATH = "retinaface-mbv2-int8.tflite" // (1, 160, 160, 3) -> [(1, 1050, 2), (1, 1050, 4), (1, 1050, 10)]
+        private const val FACE_DETECTOR_MODEL_PATH = "retinaface_mbv2_shrink-int8.tflite" // (1, 160, 160, 3) -> [(1, 1050, 2), (1, 1050, 4), (1, 1050, 10)]
         private const val FACE_LANDMARKS_MODEL_PATH = "face_landmark_192_full_integer_quant.tflite" // (1, 192, 192, 3) -> [(1, 1, 1, 1404), (1, 1, 1, 1)]
 
         private const val PADDING_RATIO = 0.75f

@@ -19,6 +19,7 @@ package kr.ac.snu.band.example.holistic_face_pose
 import android.R.attr.height
 import android.R.attr.width
 import android.graphics.RectF
+import android.media.FaceDetector.Face
 import android.util.Log
 import android.util.Size
 import org.mrsnu.band.Engine
@@ -28,6 +29,8 @@ import org.mrsnu.band.Tensor
 import org.mrsnu.band.RequestOption
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.ceil
+import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
 
@@ -51,33 +54,35 @@ class HolisticFaceHelper(private val engine: Engine, private val faceDetectorMod
     fun detectorPostProcess(outputTensors: List<Tensor>): List<FaceBoxPrediction> {
         // post process face detector output
         var faceBoxes = ArrayList<FaceBoxPrediction>()
-        val outputBuffer = FloatArray(DET_NUM_RESULTS * DET_LEN_RESULT)
-        val byteBuffer = outputTensors[0].data.order(ByteOrder.nativeOrder()).rewind()
-        (byteBuffer as ByteBuffer).asFloatBuffer().get(outputBuffer)
 
-        // Get detected faces
-        for(i in 0 until DET_NUM_RESULTS){
-            val confidence = outputBuffer[i * DET_LEN_RESULT + 15]
-            if (confidence > SCORE_THRESH){
-//                Log.d("HYUNSOO", "BOX: ${"%.02f".format(outputBuffer?.get(4 * i + 0) ?: 0f)},  " +
-//                        "${"%.02f".format(outputBuffer?.get(4 * i + 1) ?: 0f)}," +
-//                        " ${"%.02f".format(outputBuffer?.get(4 * i + 2) ?: 0f)}, " +
-//                        " ${"%.02f".format(outputBuffer?.get(4 * i + 3) ?: 0f)}")
+        val bboxBuffer = FloatArray(DET_NUM_RESULTS * 4)
+        val lmrkBuffer = FloatArray(DET_NUM_RESULTS * 10)
+        val clssBuffer = FloatArray(DET_NUM_RESULTS * 2)
+        val bboxByteBuffer = outputTensors[0].data.order(ByteOrder.nativeOrder()).rewind()
+        (bboxByteBuffer as ByteBuffer).asFloatBuffer().get(bboxBuffer)
+        val clssByteBuffer = outputTensors[1].data.order(ByteOrder.nativeOrder()).rewind()
+        (clssByteBuffer as ByteBuffer).asFloatBuffer().get(clssBuffer)
+        val lmrkByteBuffer = outputTensors[2].data.order(ByteOrder.nativeOrder()).rewind()
+        (lmrkByteBuffer as ByteBuffer).asFloatBuffer().get(lmrkBuffer)
+
+        val priors = priorBox(listOf(640f, 640f), listOf(listOf(16f, 32f), listOf(64f, 128f), listOf(256f, 512f)), listOf(8f, 16f, 32f))
+        val variances = listOf(0.1f, 0.2f)
+
+        // Decode bbox np
+        val boxes = decodeBbox(bboxBuffer, priors, variances)
+
+        for (i in 0 until DET_NUM_RESULTS){
+            val conf = clssBuffer[i*2 + 1]
+            if(conf > SCORE_THRESH){
                 faceBoxes.add(
                     FaceBoxPrediction(
-                        box = RectF(
-                            outputBuffer[i * DET_LEN_RESULT + 0] ?: 0f,
-                            outputBuffer[i * DET_LEN_RESULT + 1] ?: 0f,
-                            outputBuffer[i * DET_LEN_RESULT + 2] ?: 0f,
-                            outputBuffer[i * DET_LEN_RESULT + 3] ?: 0f
-                        ),
-                        score = confidence
+                        box = RectF(boxes[i][0], boxes[i][1], boxes[i][2], boxes[i][3]),
+                        score = conf
                     )
                 )
             }
         }
 
-        // TODO: FILTER_BOXES_BY_SIZE + NMS + SQUARE_BOXES
         // FILTER_BOXES_BY_SIZE
         faceBoxes = filterBoxesBySize(faceBoxes)
         // NMS
@@ -85,6 +90,56 @@ class HolisticFaceHelper(private val engine: Engine, private val faceDetectorMod
 
         return faceBoxes
     }
+
+
+    private fun decodeBbox(bboxBuffer: FloatArray, priors: Array<FloatArray>, variances: List<Float>): Array<FloatArray> {
+        val decodedBoxes = Array(DET_NUM_RESULTS) { FloatArray(4) }
+
+        for (i in 0 until DET_NUM_RESULTS) {
+            val centerX = priors[i][0] + bboxBuffer[i * 4 + 0] * variances[0] * priors[i][2]
+            val centerY = priors[i][1] + bboxBuffer[i * 4 + 1] * variances[0] * priors[i][3]
+            val width = priors[i][2] * exp(bboxBuffer[i * 4 + 2] * variances[1])
+            val height = priors[i][3] * exp(bboxBuffer[i * 4 + 3] * variances[1])
+
+            decodedBoxes[i][0] = (centerX - width / 2)  // xmin
+            decodedBoxes[i][1] = (centerY - height / 2) // ymin
+            decodedBoxes[i][2] = (centerX + width / 2)  // xmax
+            decodedBoxes[i][3] = (centerY + height / 2) // ymax
+        }
+
+        return decodedBoxes
+    }
+
+    private fun priorBox(imageSizes: List<Float>, minSizes: List<List<Float>>, steps: List<Float>, ): Array<FloatArray> {
+        val featureMaps = steps.map { step ->
+            listOf(
+                ceil(imageSizes[0] / step),
+                ceil(imageSizes[1] / step)
+            )
+        }
+
+        val anchors = Array(DET_NUM_RESULTS) {FloatArray(4)}
+        var cnt = 0
+        for ((k, f) in featureMaps.withIndex()) {
+            for (i in 0 until f[0].toInt()) {
+                for (j in 0 until f[1].toInt()) {
+                    for (minSize in minSizes[k]) {
+                        val sKx = minSize / imageSizes[1]
+                        val sKy = minSize / imageSizes[0]
+                        val cx = (j + 0.5) * steps[k] / imageSizes[1]
+                        val cy = (i + 0.5) * steps[k] / imageSizes[0]
+                        anchors[cnt][0] = cx.toFloat()
+                        anchors[cnt][1] = cy.toFloat()
+                        anchors[cnt][2] = sKx
+                        anchors[cnt++][3] = sKy
+                    }
+                }
+            }
+        }
+
+        return anchors
+    }
+
 
     fun detectorPredict(inputTensors : List<Tensor>, outputTensors: List<Tensor>): List<FaceBoxPrediction> {
         // inference
