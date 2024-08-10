@@ -76,8 +76,8 @@ class HolisticHelper(assetManager: AssetManager) {
                 CpuMaskFlag.BIG, CpuMaskFlag.ALL,
                 CpuMaskFlag.ALL, CpuMaskFlag.ALL
             ))
-        builder.addNumWarmups(5)
-        builder.addNumRuns(50)
+        builder.addNumWarmups(3)
+        builder.addNumRuns(3)
         builder.addAvailabilityCheckIntervalMs(30000)
         builder.addScheduleWindowSize(10)
         Engine(builder.build())
@@ -232,10 +232,14 @@ class HolisticHelper(assetManager: AssetManager) {
         // new empty list of RequestOption
         val options = mutableListOf<RequestOption>()
 
+        Log.d("HYUNSOO", "before inference")
         // Inference
         var requests = engine.requestAsyncBatch(detectorModels.toMutableList(), detectorInputTensors.toMutableList(), options)
         engine.wait(requests[FACE], detectorOutputTensors[FACE].toMutableList())
         engine.wait(requests[POSE], detectorOutputTensors[POSE].toMutableList())
+        Log.d("HYUNSOO", "after inference")
+
+
         // Post-process
         var faceRet = faceHelper.detectorPostProcess(detectorOutputTensors[FACE].toMutableList())
         var poseRet = poseHelper.detectorPostProcess(detectorOutputTensors[POSE].toMutableList())
@@ -248,6 +252,8 @@ class HolisticHelper(assetManager: AssetManager) {
             poseDetection!!.box.right = min((poseDetection!!.box.right + poseDetection!!.box.width() * POSE_PADDING_RATIO), 0.99f)
             poseDetection!!.box.bottom = min((poseDetection!!.box.bottom + poseDetection!!.box.height() * POSE_PADDING_RATIO), 0.99f)
         }
+        Log.d("HYUNSOO", "face boxes: $faceRet pose boxes: $poseRet")
+
         // 2-1. Face landmarks
         if (faceDetection != null) {
             faceCropSize = RectF(
@@ -260,25 +266,31 @@ class HolisticHelper(assetManager: AssetManager) {
             val builder = PipelineBuilder()
             builder.add(ColorSpaceConvert(ImageFormat.RGB))
             builder.add(
-                Crop(faceCropSize.left.toInt(), faceCropSize.top.toInt(),
-                faceCropSize.right.toInt(), faceCropSize.bottom.toInt()
+                Crop(faceCropSize.top.toInt(), faceCropSize.left.toInt(),
+                    faceCropSize.bottom.toInt(), faceCropSize.right.toInt()
             )
             )
             builder.add(Resize(faceLandmarksInputSize.width, faceLandmarksInputSize.height))
+            builder.add(DTypeConvert(DataType.FLOAT32))
             builder.add(Normalize(0.0f, 255.0f))
             val landmarksImageProcessor = builder.build()
             Log.d("HYUNSOO", "done till here3")
-            val landmarkInputBuffer = landmarksImageProcessor.run(
-                inputBuffer
-            )
-            landmarkInputBuffer.copyToTensor(faceLandmarksInputTensors[0])
-            Log.d("HYUNSOO", "done till here4")
-            faceLandmarks = faceHelper.landmarksPredict(
-                faceLandmarksInputTensors,
-                faceLandmarksOutputTensors,
-                faceLandmarksInputSize
-            )
-            Log.d("HYUNSOO", "done till here5")
+
+            try {
+                val faceLandmarkInputBuffer = landmarksImageProcessor.run(
+                    inputBuffer
+                )
+                faceLandmarkInputBuffer.copyToTensor(faceLandmarksInputTensors[0])
+                Log.d("HYUNSOO", "done till here4")
+                faceLandmarks = faceHelper.landmarksPredict(
+                    faceLandmarksInputTensors,
+                    faceLandmarksOutputTensors,
+                    faceLandmarksInputSize
+                )
+                Log.d("HYUNSOO", "done till here5")
+            } catch (e: Exception){
+                Log.d("HYUNSOO", "Error: $e")
+            }
         }
 
         // 2-2. Pose landmarks
@@ -294,15 +306,20 @@ class HolisticHelper(assetManager: AssetManager) {
             val builder = PipelineBuilder()
             builder.add(ColorSpaceConvert(ImageFormat.RGB))
             builder.add(Crop(
-                poseCropSize.left.toInt(), poseCropSize.top.toInt(),
-                poseCropSize.right.toInt(), poseCropSize.bottom.toInt()
+                poseCropSize.top.toInt(),poseCropSize.left.toInt(),
+                poseCropSize.bottom.toInt(), poseCropSize.right.toInt()
             ))
             builder.add(Resize(poseLandmarksInputSize.width, poseLandmarksInputSize.height))
             builder.add(Rotate(-cameraImageProperties.rotationDegrees))
             val poseLandmarkImageProcessor = builder.build()
-            val poseLandmarkInputBuffer = poseLandmarkImageProcessor.run(inputBuffer)
-            poseLandmarkInputBuffer.copyToTensor(poseLandmarksInputTensors[0])
-            poseLandmarks = poseHelper.landmarksPredict(poseLandmarksInputTensors, poseLandmarksOutputTensors)
+
+            try {
+                val poseLandmarkInputBuffer = poseLandmarkImageProcessor.run(inputBuffer)
+                poseLandmarkInputBuffer.copyToTensor(poseLandmarksInputTensors[0])
+                poseLandmarks = poseHelper.landmarksPredict(poseLandmarksInputTensors, poseLandmarksOutputTensors)
+            } catch (e: Exception){
+                Log.d("HYUNSOO", "Error: $e")
+            }
         }
     }
 

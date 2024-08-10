@@ -54,6 +54,12 @@ class HolisticPoseHelper(private val engine: Engine, private val poseDetectorMod
             val labelBuffer = outputBuffer[1]
             val scoreBuffer = outputBuffer[2]
 
+            // SSD Mobilenet V1 Model assumes class 0 is background class
+            // in label file and class labels start from 1 to number_of_classes + 1,
+            // while outputClasses correspond to class index from 0 to number_of_classes
+            val labelId = 1 + (labelBuffer?.get(it)?.toInt() ?: 0)
+            // get label if index is valid
+            val label = if (labelId < labels.size && labelId > 0) labels[labelId] else "unknown"
             val pose = PosePrediction(
                 // The locations are an array of [0, 1] floats for [top, left, bottom, right]
                 box = RectF(
@@ -62,11 +68,7 @@ class HolisticPoseHelper(private val engine: Engine, private val poseDetectorMod
                     locationBuffer?.get(4 * it + 3) ?: 0f,
                     locationBuffer?.get(4 * it + 2) ?: 0f
                 ),
-
-                // SSD Mobilenet V1 Model assumes class 0 is background class
-                // in label file and class labels start from 1 to number_of_classes + 1,
-                // while outputClasses correspond to class index from 0 to number_of_classes
-                label = labels[1 + (labelBuffer?.get(it)?.toInt() ?: 0)],
+                label = label,
 
                 // Score is a single value of [0, 1]
                 score = scoreBuffer?.get(it) ?: 0f
